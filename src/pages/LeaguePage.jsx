@@ -395,13 +395,13 @@ function MatchupCard({ a, b, teamKey, statKeys }) {
     <div className="card" style={{ padding: 0, overflow: "visible" }}>
       <div style={matchupHeader}>
         <div style={{ fontWeight: 900, fontSize: 18 }}>
-          <Link to={teamHref(aName)} style={teamNameLink}>
-            {aName}
-          </Link>{" "}
-          <span style={{ color: "var(--gnfc-muted)", fontWeight: 700 }}>vs</span>{" "}
-          <Link to={teamHref(bName)} style={teamNameLink}>
-            {bName}
-          </Link>
+          <Link to={teamHref(aName)} className="teamLinkHover" style={teamNameLink}>
+          {aName}
+        </Link>{" "}
+        <span style={{ color: "#db7d12", fontWeight: 700 }}>vs</span>{" "}
+        <Link to={teamHref(bName)} className="teamLinkHover" style={teamNameLink}>
+          {bName}
+        </Link>
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -726,9 +726,9 @@ export default function LeaguePage() {
                                   }}
                                 >
                                   {isTeam ? (
-                                    <Link to={teamHref(v)} style={teamLinkInline}>
-                                      {cell(v)}
-                                    </Link>
+                                    <Link to={teamHref(v)} className="teamLinkHover" style={teamLinkInline}>
+                                    {cell(v)}
+                                  </Link>
                                   ) : (
                                     cell(v)
                                   )}
@@ -824,22 +824,30 @@ export default function LeaguePage() {
       </div>
 
       <style>{`
-        .matchupGrid{
-          display:grid;
-          grid-template-columns: 1fr;
-          gap: 14px;
-        }
-        @media (min-width: 860px){
-          .matchupGrid{
-            grid-template-columns: 1fr 1fr;
-          }
-        }
-        @media (min-width: 1250px){
-          .matchupGrid{
-            grid-template-columns: 1fr 1fr 1fr;
-          }
-        }
-      `}</style>
+            .matchupGrid{
+              display:grid;
+              grid-template-columns: 1fr;
+              gap: 14px;
+            }
+            @media (min-width: 860px){
+              .matchupGrid{
+                grid-template-columns: 1fr 1fr;
+              }
+            }
+            @media (min-width: 1250px){
+              .matchupGrid{
+                grid-template-columns: 1fr 1fr 1fr;
+              }
+            }
+
+            /* ✅ team link hover */
+            .teamLinkHover{
+              transition: color .15s ease;
+            }
+            .teamLinkHover:hover{
+              color: #db7d12 !important;
+            }
+          `}</style>
     </>
   )
 }

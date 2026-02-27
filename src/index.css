@@ -247,6 +247,11 @@ a:hover { color: var(--gnfc-orange); }
   }
 }
 
+
+.teamLinkHover { transition: color .15s ease; }
+.teamLinkHover:hover { color: #db7d12 !important; }
+
+
 select:focus {
   border-color: rgba(219,125,18,0.55);
   box-shadow: 0 0 0 3px rgba(219,125,18,0.15);

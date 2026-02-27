@@ -16,9 +16,9 @@ const GEN_GID_BY_DIV = {
 
 // ✅ Weekly standings sheets
 const WK_GID_BY_DIV = {
-  A: "559899738",     // WkA
-  B: "1280251660",    // WkB
-  "Γ": "387039955"    // WkΓ
+  A: "559899738", // WkA
+  B: "1280251660", // WkB
+  "Γ": "387039955" // WkΓ
 }
 
 /* ----------------------------- tiny utils ----------------------------- */
@@ -30,7 +30,6 @@ function toNum(x) {
   return Number.isFinite(n) ? n : null
 }
 
-// Sort A1, A2, A10 etc by the numeric part
 function leagueNumber(leagueRaw) {
   const league = String(leagueRaw ?? "").trim().toUpperCase()
   const m = league.match(/(\d+)/)
@@ -44,14 +43,28 @@ function cell(v) {
 function s(x) {
   return String(x ?? "").replace(/\r/g, "").trim()
 }
+
 function norm(x) {
   return s(x).toLowerCase().replace(/\s+/g, " ")
+}
+
+function stripPct(x) {
+  // handles "54.3%", "54,3%", "0.543", "0,543"
+  const t = String(x ?? "").replace(/[％]/g, "%").trim()
+  if (!t) return null
+  const y = t.replace(",", ".")
+  const m = y.match(/-?\d+(\.\d+)?/)
+  if (!m) return null
+  let n = Number(m[0])
+  if (!Number.isFinite(n)) return null
+  if (t.includes("%") && n > 1) n = n / 100
+  return n
 }
 
 /* ----------------------------- General/Weekly: header rename + hidden columns ---- */
 
 function cleanHeader(h) {
-  const x = s(h).replace(/[％]/g, "%") // normalize full-width percent
+  const x = s(h).replace(/[％]/g, "%")
 
   if (x.includes("GENERAL STANDINGS GENERAL RANKING") && x.includes("Regular Ranking")) return "Rank"
   if (x.includes("WEEKLY STANDINGS WEEKLY RANKING") && x.includes("Official Ranking")) return "Rank"
@@ -66,7 +79,6 @@ function cleanHeader(h) {
 
 // ✅ Columns to hide (match by normalized header text)
 const HIDE_GEN_COLS = new Set([
-  // common stat columns
   "gp",
   "fg%",
   "3p",
@@ -77,8 +89,6 @@ const HIDE_GEN_COLS = new Set([
   "st",
   "blk",
   "to",
-
-  // sometimes appear as explicit columns
   "general statistics fg%",
   "general statistics rankings gp"
 ])
@@ -114,7 +124,6 @@ async function fetchGvizTable({ sheetId, gid, mode = "general" }) {
   const rawHeaders = cols.map(c => s(c?.label) || "")
   const data = rows.map(r => (r?.c || []).map(cellValue))
 
-  // Trim completely empty trailing columns
   const lastNonEmptyCol = (() => {
     let last = rawHeaders.length - 1
     for (; last >= 0; last--) {
@@ -128,23 +137,19 @@ async function fetchGvizTable({ sheetId, gid, mode = "general" }) {
   const headers0 = rawHeaders.slice(0, lastNonEmptyCol + 1).map(cleanHeader)
   const rows0 = data.map(r => r.slice(0, lastNonEmptyCol + 1))
 
-  // Remove spacer / dash columns
   const BAD_HEADERS = new Set(["", "—", "-", "–", "— —"])
   function isDashy(v) {
     const x = s(v)
     return x === "" || x === "—" || x === "-" || x === "–"
   }
 
-  // ✅ Decide which columns to keep
-    const keepIdx = headers0
+  const keepIdx = headers0
     .map((h, i) => ({ h, i, nh: norm(h) }))
     .filter(x => {
-      // ✅ hide only in GENERAL mode
       if (mode === "general") {
         if (HIDE_GEN_COLS.has(x.nh)) return false
         if (HIDE_PREFIXES.some(p => x.nh.startsWith(p))) return false
       }
-
       if (BAD_HEADERS.has(s(x.h))) return false
       const colAllDash = rows0.every(r => isDashy(r?.[x.i]))
       if (colAllDash) return false
@@ -155,19 +160,17 @@ async function fetchGvizTable({ sheetId, gid, mode = "general" }) {
   const headers = keepIdx.map(i => headers0[i])
   const outRows = rows0.map(r => keepIdx.map(i => r?.[i] ?? ""))
 
-        // ✅ WEEKLY: keep columns only up to the FIRST "TO"
+  // ✅ WEEKLY: keep columns only up to the FIRST "TO"
   if (mode === "weekly") {
     const firstToIdx = headers.findIndex(h => norm(h) === "to")
     if (firstToIdx !== -1) {
       const cut = firstToIdx + 1
       return {
         headers: headers.slice(0, cut),
-        rows: outRows.map(r => r.slice(0, cut)),
+        rows: outRows.map(r => r.slice(0, cut))
       }
     }
   }
-
-  return { headers, rows: outRows }
 
   return { headers, rows: outRows }
 }
@@ -193,17 +196,12 @@ function rankPill(v) {
     fontWeight: 900,
     color: "#000",
     background: "rgba(203,213,225,0.90)",
-    border: "1px solid rgba(0,0,0,0.18)",
-    boxShadow: "0 1px 0 rgba(0,0,0,0.08)"
+    border: "1px solid rgba(0,0,0,0.22)",
+    boxShadow: "0 1px 0 rgba(0,0,0,0.10)"
   }
 
-  if (isGreen) {
-    style.background = "rgba(34,197,94,0.92)"
-    style.border = "1px solid rgba(0,0,0,0.22)"
-  } else if (isRed) {
-    style.background = "rgba(239,68,68,0.92)"
-    style.border = "1px solid rgba(0,0,0,0.22)"
-  }
+  if (isGreen) style.background = "rgba(34,197,94,0.92)"
+  else if (isRed) style.background = "rgba(239,68,68,0.92)"
 
   return <span style={style}>{n}</span>
 }
@@ -232,6 +230,33 @@ function TogglePill({ active, children, onClick }) {
   )
 }
 
+/* ----------------------------- sorting helpers ----------------------------- */
+
+function parseSortableValue(v) {
+  const t = s(v)
+  if (!t || t === "—") return { type: "empty", n: null, s: "" }
+
+  // Percent-like
+  if (t.includes("%") || /fg%|ft%|w%/i.test(t)) {
+    const p = stripPct(t)
+    if (p != null) return { type: "num", n: p, s: t }
+  }
+
+  // Plain number (including commas)
+  const num = Number(t.replace(/,/g, ""))
+  if (Number.isFinite(num)) return { type: "num", n: num, s: t }
+
+  return { type: "str", n: null, s: t.toLowerCase() }
+}
+
+function SortIcon({ active, dir }) {
+  return (
+    <span style={{ marginLeft: 6, opacity: active ? 1 : 0.45, fontSize: 12 }}>
+      {!active ? "↕" : dir === "asc" ? "↑" : "↓"}
+    </span>
+  )
+}
+
 /* ----------------------------- component ----------------------------- */
 
 export default function DivisionPage() {
@@ -251,9 +276,11 @@ export default function DivisionPage() {
 
   const [selectedLeague, setSelectedLeague] = useState("")
 
+  // ✅ sorting state for standings table
+  const [sortKey, setSortKey] = useState({ col: -1, dir: "asc" })
+
   useEffect(() => {
-    const gid =
-      standingsMode === "weekly" ? WK_GID_BY_DIV[division] : GEN_GID_BY_DIV[division]
+    const gid = standingsMode === "weekly" ? WK_GID_BY_DIV[division] : GEN_GID_BY_DIV[division]
 
     if (!gid) {
       setGenHeaders([])
@@ -271,6 +298,10 @@ export default function DivisionPage() {
         if (!alive) return
         setGenHeaders(out.headers)
         setGenRows(out.rows)
+
+        // default sort by Rank if present
+        const rankIdx = out.headers.findIndex(h => norm(h) === "rank")
+        setSortKey(rankIdx !== -1 ? { col: rankIdx, dir: "asc" } : { col: -1, dir: "asc" })
       } catch (e) {
         if (!alive) return
         setGenError(e?.message || "Failed to load standings")
@@ -294,7 +325,6 @@ export default function DivisionPage() {
       out[t.league].push(t)
     }
 
-    // sort teams in each league by ranking then name
     for (const lg of Object.keys(out)) {
       out[lg].sort((a, b) => {
         const ar = toNum(a.leagueRanking)
@@ -306,12 +336,10 @@ export default function DivisionPage() {
       })
     }
 
-    // sort league keys by numeric part
     const leagueKeys = Object.keys(out).sort((a, b) => leagueNumber(a) - leagueNumber(b))
     return { leagueKeys, out, totalTeams: filtered.length }
   }, [teams, division])
 
-  // Heuristic: find which column is "Team"
   const teamColIdx = useMemo(() => {
     if (!genHeaders?.length) return -1
     const candidates = ["team", "ομαδα", "ομάδα", "club", "squad"]
@@ -321,11 +349,46 @@ export default function DivisionPage() {
     return first === -1 ? -1 : first
   }, [genHeaders])
 
-  // Find "League Ranking" column index (for pills)
   const leagueRankingColIdx = useMemo(() => {
     if (!genHeaders?.length) return -1
     return genHeaders.findIndex(h => norm(h) === "league ranking")
   }, [genHeaders])
+
+  // ✅ sorted rows for standings
+  const sortedStandingsRows = useMemo(() => {
+    const rows = Array.isArray(genRows) ? [...genRows] : []
+    const { col, dir } = sortKey
+    if (col == null || col < 0) return rows
+
+    rows.sort((a, b) => {
+      const va = parseSortableValue(a?.[col])
+      const vb = parseSortableValue(b?.[col])
+
+      // empties last
+      if (va.type === "empty" && vb.type === "empty") return 0
+      if (va.type === "empty") return 1
+      if (vb.type === "empty") return -1
+
+      // numbers first if both numbers
+      if (va.type === "num" && vb.type === "num") {
+        const d = va.n - vb.n
+        return dir === "asc" ? d : -d
+      }
+
+      // otherwise string compare
+      const d = String(va.s).localeCompare(String(vb.s), undefined, { numeric: true, sensitivity: "base" })
+      return dir === "asc" ? d : -d
+    })
+
+    return rows
+  }, [genRows, sortKey])
+
+  function onHeaderClick(idx) {
+    setSortKey(prev => {
+      if (prev.col !== idx) return { col: idx, dir: "asc" }
+      return { col: idx, dir: prev.dir === "asc" ? "desc" : "asc" }
+    })
+  }
 
   return (
     <>
@@ -405,16 +468,10 @@ export default function DivisionPage() {
                 </div>
 
                 <div style={{ display: "flex", gap: 8 }}>
-                  <TogglePill
-                    active={standingsMode === "general"}
-                    onClick={() => setStandingsMode("general")}
-                  >
+                  <TogglePill active={standingsMode === "general"} onClick={() => setStandingsMode("general")}>
                     General
                   </TogglePill>
-                  <TogglePill
-                    active={standingsMode === "weekly"}
-                    onClick={() => setStandingsMode("weekly")}
-                  >
+                  <TogglePill active={standingsMode === "weekly"} onClick={() => setStandingsMode("weekly")}>
                     Weekly
                   </TogglePill>
                 </div>
@@ -428,23 +485,34 @@ export default function DivisionPage() {
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead>
                         <tr style={{ background: "rgba(0,0,0,0.18)" }}>
-                          {(genHeaders?.length ? genHeaders : ["—"]).map((h, i) => (
-                            <th key={i} style={thStyle}>
-                              {cell(h)}
-                            </th>
-                          ))}
+                          {(genHeaders?.length ? genHeaders : ["—"]).map((h, i) => {
+                            const active = sortKey.col === i
+                            return (
+                              <th
+                                key={i}
+                                style={{ ...thStyle, cursor: genHeaders?.length ? "pointer" : "default", userSelect: "none" }}
+                                onClick={() => genHeaders?.length && onHeaderClick(i)}
+                                title={genHeaders?.length ? "Click to sort" : ""}
+                              >
+                                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                                  {cell(h)}
+                                  <SortIcon active={active} dir={sortKey.dir} />
+                                </span>
+                              </th>
+                            )
+                          })}
                         </tr>
                       </thead>
 
                       <tbody>
-                        {!genHeaders?.length || !genRows?.length ? (
+                        {!genHeaders?.length || !sortedStandingsRows?.length ? (
                           <tr>
                             <td style={tdStyle} colSpan={Math.max(1, genHeaders?.length || 1)}>
                               {genLoading ? "Loading…" : "No standings found."}
                             </td>
                           </tr>
                         ) : (
-                          genRows.map((r, idx) => (
+                          sortedStandingsRows.map((r, idx) => (
                             <tr key={idx} style={rowStyle(idx)}>
                               {genHeaders.map((_, cidx) => {
                                 const v = r?.[cidx] ?? ""

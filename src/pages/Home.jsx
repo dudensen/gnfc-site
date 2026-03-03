@@ -868,6 +868,9 @@ const sortedData = useMemo(() => {
 
   const stickyBg = "transparent"
 
+  const isRSP = view === "REGULAR SEASON PERFORMANCE"
+  const shouldWrapHeader = (colIdx) => isRSP && colIdx !== idxRank && colIdx !== idxTeam
+
   const thBase = {
     fontSize: 12,
     letterSpacing: 0.3,
@@ -889,9 +892,10 @@ const sortedData = useMemo(() => {
     verticalAlign: "top",
   }
 
-  function thStyleFor(i) {
+    function thStyleFor(i) {
     const isRank = i === idxRank
     const isTeam = i === idxTeam
+    const wrap = shouldWrapHeader(i)
 
     const sticky =
       isRank
@@ -902,8 +906,21 @@ const sortedData = useMemo(() => {
 
     return {
       ...thBase,
-      ...(isRank ? { width: wRank, color: HASH_COLOR, paddingLeft: 6, paddingRight: 6 } : {}),
-      ...(isTeam ? { width: wTeam } : {}),
+      ...(isRank ? { width: wRank, color: HASH_COLOR, paddingLeft: 6, paddingRight: 6, whiteSpace: "nowrap" } : {}),
+      ...(isTeam ? { width: wTeam, whiteSpace: "nowrap" } : {}),
+
+      // ✅ ONLY for REGULAR SEASON PERFORMANCE metric columns:
+      ...(wrap
+        ? {
+            whiteSpace: "normal",
+            lineHeight: 1.1,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+            maxWidth: 92,     // helps shrink on mobile
+            minWidth: 72,
+          }
+        : { whiteSpace: "nowrap" }),
+
       ...sticky,
     }
   }
@@ -955,7 +972,15 @@ const sortedData = useMemo(() => {
       <div style={{ height: 10 }} />
 
       <div style={{ overflowX: "auto" }}>
-        <table className="table" style={{ width: "100%", fontSize: 13, lineHeight: 1.15 }}>
+        <table
+  className="table"
+  style={{
+    width: "100%",
+    fontSize: 13,
+    lineHeight: 1.15,
+    tableLayout: isRSP ? "fixed" : "auto", // ✅ allows narrow wrapped columns in RSP
+  }}
+>
           <thead>
             <tr>
               {renderCols.map((i) => (
@@ -1193,6 +1218,10 @@ export default function Home() {
               }
               @media (max-width: 720px){
                 .sideBySideDivisions{ grid-template-columns: 1fr; }
+              }
+                @media (max-width: 520px){
+                /* Only affects the General table header wrapping behavior visually */
+                .table th { font-size: 11px; }
               }
             `}</style>
           </>

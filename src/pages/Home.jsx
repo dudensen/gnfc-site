@@ -939,7 +939,16 @@ const sortedData = useMemo(() => {
     return {
       ...tdBase,
       ...(isRank ? { width: wRank, fontWeight: 900, color: HASH_COLOR, whiteSpace: "nowrap", paddingLeft: 6, paddingRight: 6 } : {}),
-      ...(isTeam ? { width: wTeam, fontWeight: 800 } : {}),
+      ...(isTeam
+  ? {
+      width: wTeam,
+      fontWeight: 800,
+      whiteSpace: "normal",
+      overflowWrap: "anywhere",
+      wordBreak: "break-word",
+      maxWidth: wTeam,
+    }
+  : {}),
       ...sticky,
     }
   }
@@ -1223,6 +1232,17 @@ export default function Home() {
                 /* Only affects the General table header wrapping behavior visually */
                 .table th { font-size: 11px; }
               }
+              @media (max-width: 520px){
+            /* Shrink the sticky Team column so long team names wrap instead of forcing width */
+            .table th:nth-child(2),
+            .table td:nth-child(2){
+              width: 150px !important;
+              max-width: 150px !important;
+              white-space: normal !important;
+              overflow-wrap: anywhere !important;
+              word-break: break-word !important;
+            }
+          }
             `}</style>
           </>
         )}

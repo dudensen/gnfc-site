@@ -94,7 +94,7 @@ function cmpSmart(a, b) {
 
     // ✅ Tie-break: if both evaluate to 0, put real 0 before dash
     // (so dash comes AFTER real zero, regardless of sort direction)
-    if ((na === 0 && nb === 0) && (isDashA !== isDashB)) {
+    if (na === 0 && nb === 0 && isDashA !== isDashB) {
       return isDashA ? 1 : -1
     }
 
@@ -292,7 +292,13 @@ function buildGroupsTablesFromCsvRows(rows, stopRowIdx) {
 
   const pointsA = pickBestPointsIndex(rows, teamAIdx, managerAIdx, pointsCols.filter((x) => x > managerAIdx), stopRowIdx)
   const pointsB = pickBestPointsIndex(rows, teamBIdx, managerBIdx, pointsCols.filter((x) => x > managerBIdx), stopRowIdx)
-  const pointsG = pickBestPointsIndex(rows, teamGIdx, managerGIdx, pointsCols.filter((x) => x > managerGIdx), stopRowIdx)
+  const pointsG = pickBestPointsIndex(
+    rows,
+    teamGIdx,
+    managerGIdx,
+    pointsCols.filter((x) => x > managerGIdx),
+    stopRowIdx
+  )
 
   function readBlock(title, teamIdx, managerIdx, pointsIdx, opts = {}) {
     const out = []
@@ -379,7 +385,7 @@ function groupByGroupLabel(rows) {
     const ma = /^(\d+)/.exec(a)
     const mb = /^(\d+)/.exec(b)
     const na = ma ? Number(ma[1]) : 999
-    const nb = mb ? Number(mb[1]) : 999
+    const nb = mb ? Number(ma[1]) : 999
     return na - nb
   })
   return keys.map((k) => ({ group: k, rows: map.get(k) }))
@@ -543,7 +549,7 @@ function parseGeneralRankings(rows) {
   // ----------------- AWARDS start rule (after empty column after Total 3Y) -----------------
   // Awards starts after the separator right after points system block.
   // That separator is sepAfterPS; so awardsStart = sepAfterPS + 1
-// ----------------- AWARDS (FIX: take EXACT next 11 columns after separator) -----------------
+  // ----------------- AWARDS (FIX: take EXACT next 11 columns after separator) -----------------
   const awardsStart = sepAfterPS + 1
 
   // Take the next 11 columns, regardless of headers.
@@ -561,12 +567,6 @@ function parseGeneralRankings(rows) {
     cols[idx].label = WANT.AWARDS.fixed[i] || `AWARDS ${i + 1}`
   }
 
-  // Apply your fixed AWARDS names in order (only as many columns as exist)
-  for (let i = 0; i < awardsBlock.length; i++) {
-    const idx = awardsBlock[i]
-    cols[idx].label = WANT.AWARDS.fixed[i] || `AWARDS ${i + 1}`
-  }
-
   // ----------------- REGULAR SEASON PERFORMANCE labels (DO NOT TOUCH behavior) -----------------
   const rspIdxs = cols
     .filter((c) => c.section === "REGULAR SEASON PERFORMANCE")
@@ -575,8 +575,7 @@ function parseGeneralRankings(rows) {
 
   for (let i = 0; i < rspIdxs.length; i++) {
     if (!cols[rspIdxs[i]].label) {
-      cols[rspIdxs[i]].label =
-        WANT["REGULAR SEASON PERFORMANCE"].fixed[i] || `REGULAR SEASON PERFORMANCE ${i + 1}`
+      cols[rspIdxs[i]].label = WANT["REGULAR SEASON PERFORMANCE"].fixed[i] || `REGULAR SEASON PERFORMANCE ${i + 1}`
     }
   }
 
@@ -723,7 +722,16 @@ function CategoryTable({ title, rows }) {
               <thead>
                 <tr>
                   {hasRank && (
-                    <th style={{ ...thStyle, width: hashColW, textAlign: "left", color: HASH_COLOR, paddingLeft: 6, paddingRight: 6 }}>
+                    <th
+                      style={{
+                        ...thStyle,
+                        width: hashColW,
+                        textAlign: "left",
+                        color: HASH_COLOR,
+                        paddingLeft: 6,
+                        paddingRight: 6,
+                      }}
+                    >
                       #
                     </th>
                   )}
@@ -793,7 +801,9 @@ function ChampionsLeagueTable({ title, rows }) {
         <table className="table" style={tableStyle}>
           <thead>
             <tr>
-              <th style={{ ...thStyle, width: hashColW, textAlign: "left", color: HASH_COLOR, paddingLeft: 6, paddingRight: 6 }}>#</th>
+              <th style={{ ...thStyle, width: hashColW, textAlign: "left", color: HASH_COLOR, paddingLeft: 6, paddingRight: 6 }}>
+                #
+              </th>
               <th style={{ ...thStyle, textAlign: "left" }}>Team</th>
               <th style={{ ...thStyle, textAlign: "left" }}>Manager</th>
             </tr>
@@ -840,20 +850,24 @@ function GeneralRankingsTable({ parsed, view, onViewChange }) {
   const [sort, setSort] = useState({ colIdx: idxRank, dir: "asc" })
 
   // reset sort when view changes (optional, feels nicer)
-const sortedData = useMemo(() => {
-  return sortRowsStable(
-    data,
-    (row) => {
-      const v = row?.[sort.colIdx]
-      // 👇 treat blank as 0 for sorting
-      return s(v) ? v : "0"
-    },
-    sort.dir
-  )
-}, [data, sort])
+  const sortedData = useMemo(() => {
+    return sortRowsStable(
+      data,
+      (row) => {
+        const v = row?.[sort.colIdx]
+        // 👇 treat blank as 0 for sorting
+        return s(v) ? v : "0"
+      },
+      sort.dir
+    )
+  }, [data, sort])
 
   const wRank = 34
   const wTeam = 220
+
+  const isRSP = view === "REGULAR SEASON PERFORMANCE"
+  const shouldWrapHeader = (colIdx) => isRSP && colIdx !== idxRank && colIdx !== idxTeam
+  const isManagerCol = (colIdx) => norm(cols?.[colIdx]?.label) === "manager"
 
   const selectStyle = {
     padding: "7px 12px",
@@ -868,14 +882,10 @@ const sortedData = useMemo(() => {
 
   const stickyBg = "transparent"
 
-  const isRSP = view === "REGULAR SEASON PERFORMANCE"
-  const shouldWrapHeader = (colIdx) => isRSP && colIdx !== idxRank && colIdx !== idxTeam
-
   const thBase = {
     fontSize: 12,
     letterSpacing: 0.3,
     textAlign: "left",
-    whiteSpace: "nowrap",
     background: "transparent",
     position: "sticky",
     top: 0,
@@ -892,7 +902,7 @@ const sortedData = useMemo(() => {
     verticalAlign: "top",
   }
 
-    function thStyleFor(i) {
+  function thStyleFor(i) {
     const isRank = i === idxRank
     const isTeam = i === idxTeam
     const wrap = shouldWrapHeader(i)
@@ -906,20 +916,34 @@ const sortedData = useMemo(() => {
 
     return {
       ...thBase,
-      ...(isRank ? { width: wRank, color: HASH_COLOR, paddingLeft: 6, paddingRight: 6, whiteSpace: "nowrap" } : {}),
-      ...(isTeam ? { width: wTeam, whiteSpace: "nowrap" } : {}),
+      ...(isRank
+        ? {
+            width: wRank,
+            color: HASH_COLOR,
+            paddingLeft: 6,
+            paddingRight: 6,
+            whiteSpace: "normal",
+            overflowWrap: "normal",
+            wordBreak: "normal",
+            maxWidth: wRank,
+          }
+        : {}),
+      ...(isTeam ? { width: wTeam, whiteSpace: "normal", overflowWrap: "normal", wordBreak: "normal", maxWidth: wTeam } : {}),
+      ...(isManagerCol(i) ? { whiteSpace: "normal", overflowWrap: "normal", wordBreak: "normal", maxWidth: 160 } : {}),
 
       // ✅ ONLY for REGULAR SEASON PERFORMANCE metric columns:
       ...(wrap
-        ? {
-            whiteSpace: "normal",
-            lineHeight: 1.1,
-            overflowWrap: "anywhere",
-            wordBreak: "break-word",
-            maxWidth: 92,     // helps shrink on mobile
-            minWidth: 72,
-          }
-        : { whiteSpace: "nowrap" }),
+  ? {
+      whiteSpace: "normal",
+      lineHeight: 1.1,
+      overflowWrap: "normal",
+      wordBreak: "normal",
+      hyphens: "auto",
+      maxWidth: 92,
+      minWidth: 72,
+      overflow: "hidden", // ✅ prevents bleeding into next column
+    }
+  : { whiteSpace: "nowrap" }),
 
       ...sticky,
     }
@@ -938,17 +962,30 @@ const sortedData = useMemo(() => {
 
     return {
       ...tdBase,
-      ...(isRank ? { width: wRank, fontWeight: 900, color: HASH_COLOR, whiteSpace: "nowrap", paddingLeft: 6, paddingRight: 6 } : {}),
+      ...(isRank
+        ? {
+            width: wRank,
+            fontWeight: 900,
+            color: HASH_COLOR,
+            whiteSpace: "normal",
+            overflowWrap: "normal",
+            wordBreak: "normal",
+            paddingLeft: 6,
+            paddingRight: 6,
+            maxWidth: wRank,
+          }
+        : {}),
       ...(isTeam
-  ? {
-      width: wTeam,
-      fontWeight: 800,
-      whiteSpace: "normal",
-      overflowWrap: "anywhere",
-      wordBreak: "break-word",
-      maxWidth: wTeam,
-    }
-  : {}),
+        ? {
+            width: wTeam,
+            fontWeight: 800,
+            whiteSpace: "normal",
+            overflowWrap: "normal",
+            wordBreak: "normal",
+            maxWidth: wTeam,
+          }
+        : {}),
+      ...(isManagerCol(i) ? { whiteSpace: "normal", overflowWrap: "normal", wordBreak: "normal", maxWidth: 160 } : {}),
       ...sticky,
     }
   }
@@ -982,26 +1019,37 @@ const sortedData = useMemo(() => {
 
       <div style={{ overflowX: "auto" }}>
         <table
-  className="table"
-  style={{
-    width: "100%",
-    fontSize: 13,
-    lineHeight: 1.15,
-    tableLayout: isRSP ? "fixed" : "auto", // ✅ allows narrow wrapped columns in RSP
-  }}
->
+          className="table"
+          style={{
+            width: "100%",
+            fontSize: 13,
+            lineHeight: 1.15,
+            tableLayout: isRSP ? "fixed" : "auto",
+          }}
+        >
           <thead>
             <tr>
               {renderCols.map((i) => (
                 <th key={i} style={thStyleFor(i)} onClick={() => onSort(i)} title="Sort">
-                  <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                    <span>{cols[i]?.label || `Col ${i + 1}`}</span>
-                    {sort.colIdx === i && (
-                      <span style={{ fontSize: 11, opacity: 0.75 }}>
-                        {sort.dir === "asc" ? "▲" : "▼"}
-                      </span>
-                    )}
-                  </span>
+                  <div
+  style={{
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    flexWrap: "wrap",   // ✅ allows wrapping
+    minWidth: 0,        // ✅ allows shrinking inside fixed table layout
+  }}
+>
+  <span style={{ minWidth: 0 }}>
+    {cols[i]?.label || `Col ${i + 1}`}
+  </span>
+
+  {sort.colIdx === i && (
+    <span style={{ fontSize: 11, opacity: 0.75, whiteSpace: "nowrap" }}>
+      {sort.dir === "asc" ? "▲" : "▼"}
+    </span>
+  )}
+</div>
                 </th>
               ))}
             </tr>
@@ -1015,7 +1063,7 @@ const sortedData = useMemo(() => {
                   if (i === idxTeam) {
                     return (
                       <td key={i} style={tdStyleFor(i)}>
-                        <Link className="teamLink" to={teamHref(v)} style={{ lineHeight: 1.15 }}>
+                        <Link className="teamLink" to={teamHref(v)} style={{ lineHeight: 1.15, display: "inline" }}>
                           {cell(v)}
                         </Link>
                       </td>
@@ -1211,39 +1259,66 @@ export default function Home() {
               </div>
             )}
 
-            {!loadingAll && !errAll && general && <GeneralRankingsTable parsed={general} view={generalView} onViewChange={setGeneralView} />}
+            {!loadingAll && !errAll && general && (
+              <>
+                <GeneralRankingsTable parsed={general} view={generalView} onViewChange={setGeneralView} />
 
-            <style>{`
-              .teamLink{ color: inherit; text-decoration: none; }
-              .teamLink:hover{ color: ${ORANGE}; text-decoration: underline; text-underline-offset: 3px; }
+                <style>{`
+                  .teamLink{ color: inherit; text-decoration: none; }
+                  .teamLink:hover{ color: ${ORANGE}; text-decoration: underline; text-underline-offset: 3px; }
 
-              .sideBySideDivisions{
-                display: grid;
-                grid-template-columns: repeat(3, minmax(0, 1fr));
-                gap: 14px;
-              }
-              @media (max-width: 1100px){
-                .sideBySideDivisions{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
-              }
-              @media (max-width: 720px){
-                .sideBySideDivisions{ grid-template-columns: 1fr; }
-              }
-                @media (max-width: 520px){
-                /* Only affects the General table header wrapping behavior visually */
-                .table th { font-size: 11px; }
-              }
-              @media (max-width: 520px){
-            /* Shrink the sticky Team column so long team names wrap instead of forcing width */
-            .table th:nth-child(2),
-            .table td:nth-child(2){
-              width: 150px !important;
-              max-width: 150px !important;
-              white-space: normal !important;
-              overflow-wrap: anywhere !important;
-              word-break: break-word !important;
-            }
-          }
-            `}</style>
+                  .sideBySideDivisions{
+                    display: grid;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    gap: 14px;
+                  }
+                  @media (max-width: 1100px){
+                    .sideBySideDivisions{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+                  }
+                  @media (max-width: 720px){
+                    .sideBySideDivisions{ grid-template-columns: 1fr; }
+                  }
+
+                  /* ✅ Mobile tightening: allow wrap ONLY on spaces (not letters) */
+                  @media (max-width: 520px){
+                    .table th{ font-size: 11px; }
+
+                    /* # column */
+                    .table th:nth-child(1),
+                    .table td:nth-child(1){
+                      width: 28px !important;
+                      max-width: 28px !important;
+                      white-space: normal !important;
+                      overflow-wrap: normal !important;
+                      word-break: normal !important;
+                      hyphens: auto;
+                    }
+
+                    /* Team column */
+                    .table th:nth-child(2),
+                    .table td:nth-child(2){
+                      width: 150px !important;
+                      max-width: 150px !important;
+                      white-space: normal !important;
+                      overflow-wrap: normal !important;
+                      word-break: normal !important;
+                      hyphens: auto;
+                    }
+
+                    /* Manager column */
+                    .table th:nth-child(3),
+                    .table td:nth-child(3){
+                      width: 140px !important;
+                      max-width: 140px !important;
+                      white-space: normal !important;
+                      overflow-wrap: normal !important;
+                      word-break: normal !important;
+                      hyphens: auto;
+                    }
+                  }
+                `}</style>
+              </>
+            )}
           </>
         )}
       </div>

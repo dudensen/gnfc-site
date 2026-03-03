@@ -24,6 +24,10 @@ function cell(v) {
   return s(v) || "—"
 }
 
+function hasLetters(x) {
+  return /[A-Za-zΑ-Ωα-ω]/.test(s(x))
+}
+
 function teamHref(teamName) {
   return `/team/${encodeURIComponent(s(teamName))}`
 }
@@ -44,15 +48,98 @@ function gvizToObjects(gviz) {
 
   const rows = (gviz?.table?.rows || []).map(r => {
     const out = {}
-    ;(r?.c || []).forEach((cell, i) => {
+    const cells = r?.c || []
+
+    // ✅ IMPORTANT: iterate over ALL columns, not only cells that exist
+    for (let i = 0; i < cols.length; i++) {
       const key = cols[i] || `col_${i + 1}`
-      out[key] = cell ? (cell.f ?? cell.v ?? null) : null
-    })
+      const cc = cells[i] // may be undefined when GViz omits it
+      out[key] = cc ? (cc.f ?? cc.v ?? null) : null
+    }
+
     return out
   })
 
   return { cols, rows }
 }
+
+/* ----------------------------- CSV parsing (Playoffs only) ----------------------------- */
+/**
+ * Minimal CSV parser:
+ * - commas
+ * - quoted values with commas
+ * - "" escape inside quoted fields
+ */
+function parseCsv(text) {
+  const rows = []
+  let row = []
+  let cur = ""
+  let inQuotes = false
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    const next = text[i + 1]
+
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        cur += '"'
+        i++
+      } else if (ch === '"') {
+        inQuotes = false
+      } else {
+        cur += ch
+      }
+      continue
+    }
+
+    if (ch === '"') {
+      inQuotes = true
+      continue
+    }
+
+    if (ch === ",") {
+      row.push(cur)
+      cur = ""
+      continue
+    }
+
+    if (ch === "\n") {
+      row.push(cur)
+      rows.push(row)
+      row = []
+      cur = ""
+      continue
+    }
+
+    if (ch === "\r") continue
+
+    cur += ch
+  }
+
+  row.push(cur)
+  rows.push(row)
+
+  return rows
+}
+
+function csvToObjects(csvRows, headerRowIndex = 1) {
+  const headers = (csvRows?.[headerRowIndex] || []).map(h => s(h))
+  const outRows = []
+
+  for (let i = headerRowIndex + 1; i < (csvRows || []).length; i++) {
+    const r = csvRows[i] || []
+    const obj = {}
+    for (let c = 0; c < headers.length; c++) {
+      const key = headers[c] || `col_${c + 1}`
+      obj[key] = r[c] != null ? s(r[c]) : ""
+    }
+    outRows.push(obj)
+  }
+
+  return { cols: headers, rows: outRows }
+}
+
+/* ----------------------------- row helpers ----------------------------- */
 
 function isEmptyRow(row) {
   const vals = Object.values(row || {}).map(v => s(v))
@@ -193,9 +280,7 @@ function compareStat(aVal, bVal, statKey) {
 }
 
 function scoreWLT(aRow, bRow, statKeys) {
-  let w = 0,
-    l = 0,
-    t = 0
+  let w = 0, l = 0, t = 0
   for (const k of statKeys) {
     const c = compareStat(aRow?.[k], bRow?.[k], k)
     if (c === 1) w++
@@ -262,44 +347,73 @@ function detectStatKeysFromRows(rows, teamKey) {
     : detected
 }
 
-/* ----- playoffs: round title from merged header in COLS ----- */
+/* ----- playoffs (CSV): round titles in FG% column, marker rows have NO "%" ----- */
 
-function detectRoundFromCols(cols) {
-  const joined = norm((cols || []).join(" "))
-  if (joined.includes("round 1")) return "Round 1"
-  if (joined.includes("semifinals")) return "SEMIFINALS"
-  if (joined.includes("finals")) return "FINALS"
-  if (joined.includes("3rd place") || joined.includes("third place")) return "3RD PLACE"
-  return "PLAYOFFS"
+function normalizeRoundTitle(x) {
+  const raw = s(x)
+  const n = norm(raw)
+  if (!raw) return null
+
+  if (n.includes("semi")) return "SEMIFINALS"
+  if (n.includes("3rd") || n.includes("third")) return "3RD PLACE"
+  if (n.includes("final") && !n.includes("semi")) return "FINALS"
+  if (n.includes("round")) return "1st ROUND"
+
+  return raw
 }
 
-function buildPlayoffsSections(rows, cols, leagueKey) {
+function buildPlayoffsSectionsCsv(rows, cols, leagueKey) {
   const cleaned = (rows || []).filter(r => !isEmptyRow(r))
   if (!cleaned.length) return []
 
   const sample = cleaned[0]
-  const kLeague = findKeyByNorm(sample, "league")
+  const kLeague = findKeyByNorm(sample, "league") // may or may not exist
   const teamKey = pickTeamKey(cleaned)
-
   const leagueNorm = norm(leagueKey)
 
-  const filtered = cleaned.filter(r => {
+  const kFG = (cols || []).find(c => norm(c) === "fg%") || "FG%"
+
+  const sections = []
+  let currentRound = "1st ROUND"
+  let bucket = []
+
+  const flush = () => {
+    const pairs = chunkPairs(bucket)
+    if (pairs.length) sections.push({ round: currentRound, pairs, teamKey })
+    bucket = []
+  }
+
+  for (const r of cleaned) {
     const team = s(r?.[teamKey])
-    if (!team) return false
-    if (norm(team) === "bye") return false
-    if (kLeague) return norm(r?.[kLeague]) === leagueNorm
-    return true
-  })
+    const fgCell = s(r?.[kFG])
 
-  const round = detectRoundFromCols(cols)
+    // marker row: Team empty, FG% column contains title text (no %)
+    if (!team) {
+      if (fgCell && !fgCell.includes("%") && hasLetters(fgCell)) {
+        const next = normalizeRoundTitle(fgCell)
+        console.log("[Playoffs CSV] marker:", fgCell, "=>", next)
+        if (next) {
+          flush()
+          currentRound = next
+        }
+      }
+      continue
+    }
 
-  return [
-    {
-      round,
-      pairs: chunkPairs(filtered),
-      teamKey,
-    },
-  ]
+    // league filter only for team rows if league column exists
+    if (kLeague && norm(r?.[kLeague]) !== leagueNorm) continue
+    if (norm(team) === "bye") continue
+
+    bucket.push(r)
+  }
+
+  flush()
+
+  const order = ["1st ROUND", "SEMIFINALS", "FINALS", "3RD PLACE"]
+  sections.sort((a, b) => order.indexOf(a.round) - order.indexOf(b.round))
+
+  console.log("[Playoffs CSV] sections:", sections.map(s => `${s.round}:${s.pairs.length}`))
+  return sections
 }
 
 /* ----------------------------- UI components ----------------------------- */
@@ -385,7 +499,7 @@ function StatChip({ value, tone }) {
   return <span style={{ ...base, ...toneStyle }}>{cell(value)}</span>
 }
 
-function MatchupCard({ a, b, teamKey, statKeys }) {
+function MatchupCard({ a, b, teamKey, statKeys, round }) {
   const aName = cell(a?.[teamKey])
   const bName = cell(b?.[teamKey])
 
@@ -394,14 +508,23 @@ function MatchupCard({ a, b, teamKey, statKeys }) {
   return (
     <div className="card" style={{ padding: 0, overflow: "visible" }}>
       <div style={matchupHeader}>
-        <div style={{ fontWeight: 900, fontSize: 18 }}>
-          <Link to={teamHref(aName)} className="teamLinkHover" style={teamNameLink}>
-          {aName}
-        </Link>{" "}
-        <span style={{ color: "#db7d12", fontWeight: 700 }}>vs</span>{" "}
-        <Link to={teamHref(bName)} className="teamLinkHover" style={teamNameLink}>
-          {bName}
-        </Link>
+        <div>
+          <div style={{ fontWeight: 900, fontSize: 18 }}>
+            <Link to={teamHref(aName)} className="teamLinkHover" style={teamNameLink}>
+              {aName}
+            </Link>{" "}
+            <span style={{ color: "#db7d12", fontWeight: 700 }}>vs</span>{" "}
+            <Link to={teamHref(bName)} className="teamLinkHover" style={teamNameLink}>
+              {bName}
+            </Link>
+          </div>
+
+          {/* ✅ ONLY green pill inside matchup */}
+          {round ? (
+            <div style={{ marginTop: 6 }}>
+              <span style={roundPill}>{round}</span>
+            </div>
+          ) : null}
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -487,19 +610,16 @@ export default function LeaguePage() {
 
   const [view, setView] = useState("matchups") // "matchups" | "playouts" | "playoffs"
 
-  // fetch normal league
+  // fetch normal league (GViz)
   useEffect(() => {
     let alive = true
-
     ;(async () => {
       try {
         setLoading(true)
         setError("")
-
         const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${gid}`
         const res = await fetch(url)
         const text = await res.text()
-
         const gviz = gvizExtractJson(text)
         const parsed = gvizToObjects(gviz)
 
@@ -514,58 +634,54 @@ export default function LeaguePage() {
         setLoading(false)
       }
     })()
-
-    return () => {
-      alive = false
-    }
+    return () => { alive = false }
   }, [gid])
 
-  // fetch playoffs
+  // fetch playoffs (CSV export so round marker rows are preserved)
   useEffect(() => {
     let alive = true
-
     ;(async () => {
       try {
         setPlayoffsLoading(true)
         setPlayoffsError("")
 
-        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${PLAYOFFS_GID}`
+        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${PLAYOFFS_GID}`
         const res = await fetch(url)
         const text = await res.text()
 
-        const gviz = gvizExtractJson(text)
-        const parsed = gvizToObjects(gviz)
+        const csvRows = parseCsv(text)
+
+        console.log("=== PLAYOFFS RAW CSV first 20 rows ===")
+        console.log(csvRows.slice(0, 20))
+        console.log("=== END RAW CSV ===")
+
+        // headers are row 2 in sheet => index 1
+        const parsed = csvToObjects(csvRows, 1)
 
         if (!alive) return
         setPlayoffsCols(parsed.cols || [])
         setPlayoffsRows(parsed.rows || [])
       } catch (e) {
         if (!alive) return
-        setPlayoffsError(e?.message || "Failed to fetch playoffs data")
+        setPlayoffsError(e?.message || "Failed to fetch playoffs CSV")
       } finally {
         if (!alive) return
         setPlayoffsLoading(false)
       }
     })()
-
-    return () => {
-      alive = false
-    }
+    return () => { alive = false }
   }, [leagueKey])
 
-  // fetch playouts
+  // fetch playouts (GViz)
   useEffect(() => {
     let alive = true
-
     ;(async () => {
       try {
         setPlayoutsLoading(true)
         setPlayoutsError("")
-
         const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${PLAYOUTS_GID}`
         const res = await fetch(url)
         const text = await res.text()
-
         const gviz = gvizExtractJson(text)
         const parsed = gvizToObjects(gviz)
 
@@ -579,13 +695,14 @@ export default function LeaguePage() {
         setPlayoutsLoading(false)
       }
     })()
-
-    return () => {
-      alive = false
-    }
+    return () => { alive = false }
   }, [leagueKey])
 
-  const standingsBefore = useMemo(() => parseStandingsBeforeMatchup(allRows, cols), [allRows, cols])
+  // ✅ restore category standings above matchups
+  const standingsBefore = useMemo(
+    () => parseStandingsBeforeMatchup(allRows, cols),
+    [allRows, cols]
+  )
 
   const { matchups, teamKey, statKeys } = useMemo(() => {
     const cleaned = (allRows || []).filter(r => !isEmptyRow(r))
@@ -609,7 +726,7 @@ export default function LeaguePage() {
 
   const playoffsSections = useMemo(() => {
     const cleaned = (playoffsRows || []).filter(r => !isEmptyRow(r))
-    const sections = buildPlayoffsSections(cleaned, playoffsCols, leagueKey)
+    const sections = buildPlayoffsSectionsCsv(cleaned, playoffsCols, leagueKey)
 
     const firstPairRow = sections?.[0]?.pairs?.[0]?.[0]
     const tk = sections?.[0]?.teamKey || pickTeamKey(cleaned)
@@ -681,6 +798,7 @@ export default function LeaguePage() {
 
         {!showingLoading && !showingError && (
           <>
+            {/* ✅ restored standings table */}
             {standingsBefore && (
               <>
                 <div className="sectionTitle" style={{ marginTop: 0 }}>
@@ -727,8 +845,8 @@ export default function LeaguePage() {
                                 >
                                   {isTeam ? (
                                     <Link to={teamHref(v)} className="teamLinkHover" style={teamLinkInline}>
-                                    {cell(v)}
-                                  </Link>
+                                      {cell(v)}
+                                    </Link>
                                   ) : (
                                     cell(v)
                                   )}
@@ -794,29 +912,20 @@ export default function LeaguePage() {
                 ))}
               </div>
             ) : (
-              <div style={{ display: "grid", gap: 14 }}>
-                {playoffsSections.sections.map((sec, sidx) => (
-                  <div key={`${sec.round}-${sidx}`}>
-                    <div className="sectionTitle" style={{ marginTop: sidx === 0 ? 0 : 10 }}>
-                      <span className="badge">{sec.round}</span>
-                      <span style={{ color: "var(--gnfc-muted)", fontSize: 13 }}>
-                        {sec.pairs.length} matchups
-                      </span>
-                    </div>
-
-                    <div className="matchupGrid">
-                      {sec.pairs.map(([a, b], idx) => (
-                        <MatchupCard
-                          key={`playoffs-${sec.round}-${idx}`}
-                          a={a}
-                          b={b}
-                          teamKey={playoffsSections.teamKey}
-                          statKeys={playoffsSections.statKeys}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))}
+              <div className="matchupGrid">
+                {/* ✅ no orange section pills, only green pill inside each matchup */}
+                {playoffsSections.sections.flatMap(sec =>
+                  sec.pairs.map(([a, b], idx) => (
+                    <MatchupCard
+                      key={`playoffs-${sec.round}-${idx}`}
+                      a={a}
+                      b={b}
+                      round={sec.round}
+                      teamKey={playoffsSections.teamKey}
+                      statKeys={playoffsSections.statKeys}
+                    />
+                  ))
+                )}
               </div>
             )}
           </>
@@ -824,30 +933,29 @@ export default function LeaguePage() {
       </div>
 
       <style>{`
-            .matchupGrid{
-              display:grid;
-              grid-template-columns: 1fr;
-              gap: 14px;
-            }
-            @media (min-width: 860px){
-              .matchupGrid{
-                grid-template-columns: 1fr 1fr;
-              }
-            }
-            @media (min-width: 1250px){
-              .matchupGrid{
-                grid-template-columns: 1fr 1fr 1fr;
-              }
-            }
+        .matchupGrid{
+          display:grid;
+          grid-template-columns: 1fr;
+          gap: 14px;
+        }
+        @media (min-width: 860px){
+          .matchupGrid{
+            grid-template-columns: 1fr 1fr;
+          }
+        }
+        @media (min-width: 1250px){
+          .matchupGrid{
+            grid-template-columns: 1fr 1fr 1fr;
+          }
+        }
 
-            /* ✅ team link hover */
-            .teamLinkHover{
-              transition: color .15s ease;
-            }
-            .teamLinkHover:hover{
-              color: #db7d12 !important;
-            }
-          `}</style>
+        .teamLinkHover{
+          transition: color .15s ease;
+        }
+        .teamLinkHover:hover{
+          color: #db7d12 !important;
+        }
+      `}</style>
     </>
   )
 }
@@ -936,6 +1044,21 @@ const tabPillInactive = {
   border: "none",
   background: "transparent",
   color: "var(--gnfc-muted)",
+}
+
+const roundPill = {
+  display: "inline-flex",
+  alignItems: "center",
+  height: 22,
+  padding: "0 10px",
+  borderRadius: 999,
+  fontSize: 11,
+  fontWeight: 900,
+  letterSpacing: 0.6,
+  textTransform: "uppercase",
+  border: "1px solid rgba(10,122,114,0.55)",
+  background: "rgba(10,122,114,0.10)",
+  color: "var(--gnfc-ink)",
 }
 
 const rowStyle = idx => ({

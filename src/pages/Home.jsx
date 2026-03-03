@@ -129,14 +129,25 @@ function SortTh({ label, active, dir, onClick, style }) {
       }}
       title="Sort"
     >
-      <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-        <span>{label}</span>
-        {active && (
-          <span style={{ fontSize: 11, opacity: 0.75 }}>
-            {dir === "asc" ? "▲" : "▼"}
-          </span>
-        )}
-      </span>
+      <div
+  style={{
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    flexWrap: "wrap",   // ✅ allows wrapping
+    minWidth: 0,        // ✅ allows shrinking inside fixed table layout
+  }}
+>
+  <span style={{ minWidth: 0 }}>
+    {cols[i]?.label || `Col ${i + 1}`}
+  </span>
+
+  {sort.colIdx === i && (
+    <span style={{ fontSize: 11, opacity: 0.75, whiteSpace: "nowrap" }}>
+      {sort.dir === "asc" ? "▲" : "▼"}
+    </span>
+  )}
+</div>
     </th>
   )
 }

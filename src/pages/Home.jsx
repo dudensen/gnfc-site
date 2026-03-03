@@ -93,7 +93,6 @@ function cmpSmart(a, b) {
     if (diff !== 0) return diff
 
     // ✅ Tie-break: if both evaluate to 0, put real 0 before dash
-    // (so dash comes AFTER real zero, regardless of sort direction)
     if (na === 0 && nb === 0 && isDashA !== isDashB) {
       return isDashA ? 1 : -1
     }
@@ -115,41 +114,6 @@ function sortRowsStable(rows, getVal, dir) {
       return x.idx - y.idx
     })
     .map((x) => x.r)
-}
-
-function SortTh({ label, active, dir, onClick, style }) {
-  return (
-    <th
-      onClick={onClick}
-      style={{
-        ...style,
-        cursor: "pointer",
-        userSelect: "none",
-        whiteSpace: "nowrap",
-      }}
-      title="Sort"
-    >
-      <div
-  style={{
-    display: "flex",
-    gap: 6,
-    alignItems: "center",
-    flexWrap: "wrap",   // ✅ allows wrapping
-    minWidth: 0,        // ✅ allows shrinking inside fixed table layout
-  }}
->
-  <span style={{ minWidth: 0 }}>
-    {cols[i]?.label || `Col ${i + 1}`}
-  </span>
-
-  {sort.colIdx === i && (
-    <span style={{ fontSize: 11, opacity: 0.75, whiteSpace: "nowrap" }}>
-      {sort.dir === "asc" ? "▲" : "▼"}
-    </span>
-  )}
-</div>
-    </th>
-  )
 }
 
 /* ----------------------------- CSV helpers ----------------------------- */
@@ -396,7 +360,7 @@ function groupByGroupLabel(rows) {
     const ma = /^(\d+)/.exec(a)
     const mb = /^(\d+)/.exec(b)
     const na = ma ? Number(ma[1]) : 999
-    const nb = mb ? Number(ma[1]) : 999
+    const nb = mb ? Number(mb[1]) : 999
     return na - nb
   })
   return keys.map((k) => ({ group: k, rows: map.get(k) }))
@@ -453,13 +417,8 @@ function parseGeneralRankings(rows) {
   })
 
   const WANT = {
-    "GENERAL RANKING": {
-      fixed: ["Manager"],
-      includeYearCols: true, // keep as-is
-    },
-    "POINTS SYSTEM": {
-      fixed: ["Total", "League points", "Extra", "Total 3Y"], // last 4 always
-    },
+    "GENERAL RANKING": { fixed: ["Manager"], includeYearCols: true },
+    "POINTS SYSTEM": { fixed: ["Total", "League points", "Extra", "Total 3Y"] },
     AWARDS: {
       fixed: [
         "Total Trophies",
@@ -475,10 +434,7 @@ function parseGeneralRankings(rows) {
         "League Winner Γ",
       ],
     },
-    "REGULAR SEASON PERFORMANCE": {
-      // keep as-is
-      fixed: ["Bye Position (1-2)%", "Playoffs Entry (1-6)%", "Average Position", "W%"],
-    },
+    "REGULAR SEASON PERFORMANCE": { fixed: ["Bye Position (1-2)%", "Playoffs Entry (1-6)%", "Average Position", "W%"] },
   }
 
   const KNOWN = Object.keys(WANT)
@@ -502,9 +458,7 @@ function parseGeneralRankings(rows) {
     const sample = data.slice(0, 220)
     if (!sample.length) return false
     let empty = 0
-    for (const r of sample) {
-      if (!s(r[colIdx])) empty++
-    }
+    for (const r of sample) if (!s(r[colIdx])) empty++
     const emptyRatio = empty / sample.length
     return emptyRatio >= 0.9
   }
@@ -517,13 +471,10 @@ function parseGeneralRankings(rows) {
     return -1
   }
 
-  // By your rule: Points System starts after the empty column after 2020 => 2020+2
-  // But we’ll also *verify* the separator exists:
   const sepAfter2020 = findNextSeparator(idx2020 + 1)
   const startPS = idx2020 + 2
 
   if (sepAfter2020 !== idx2020 + 1) {
-    // Not fatal, but warn; still follow your rule startPS = idx2020+2
     console.log("[All] Expected separator at 2020+1, found at:", sepAfter2020)
   }
 
@@ -533,14 +484,11 @@ function parseGeneralRankings(rows) {
   // POINTS SYSTEM block columns are [startPS .. sepAfterPS-1]
   const psBlock = []
   for (let i = startPS; i < sepAfterPS; i++) psBlock.push(i)
-
   if (psBlock.length < 4) throw new Error("POINTS SYSTEM block too small (expected at least 4 totals columns).")
 
   const psSeasons = psBlock.slice(0, -4)
-  const psTotals = psBlock.slice(-4) // <- guaranteed order: Total, League points, Extra, Total 3Y
+  const psTotals = psBlock.slice(-4)
 
-  // Label season columns dynamically based on latestYear:
-  // latestYear=2026 => seasons start at 2024-2025 then 2023-2024 ... downwards
   if (latestYear != null) {
     for (let k = 0; k < psSeasons.length; k++) {
       const start = latestYear - 2 - k
@@ -551,28 +499,18 @@ function parseGeneralRankings(rows) {
     for (let k = 0; k < psSeasons.length; k++) cols[psSeasons[k]].label = `Season ${k + 1}`
   }
 
-  // Label last 4 totals explicitly (always)
   cols[psTotals[0]].label = "Total"
   cols[psTotals[1]].label = "League points"
   cols[psTotals[2]].label = "Extra"
   cols[psTotals[3]].label = "Total 3Y"
 
-  // ----------------- AWARDS start rule (after empty column after Total 3Y) -----------------
-  // Awards starts after the separator right after points system block.
-  // That separator is sepAfterPS; so awardsStart = sepAfterPS + 1
   // ----------------- AWARDS (FIX: take EXACT next 11 columns after separator) -----------------
   const awardsStart = sepAfterPS + 1
-
-  // Take the next 11 columns, regardless of headers.
-  // This matches your list exactly:
   const AWARDS_COUNT = 11
 
   const awardsBlock = []
-  for (let i = awardsStart; i < Math.min(colCount, awardsStart + AWARDS_COUNT); i++) {
-    awardsBlock.push(i)
-  }
+  for (let i = awardsStart; i < Math.min(colCount, awardsStart + AWARDS_COUNT); i++) awardsBlock.push(i)
 
-  // Apply your fixed AWARDS names in order
   for (let i = 0; i < awardsBlock.length; i++) {
     const idx = awardsBlock[i]
     cols[idx].label = WANT.AWARDS.fixed[i] || `AWARDS ${i + 1}`
@@ -590,7 +528,7 @@ function parseGeneralRankings(rows) {
     }
   }
 
-  // Fill any remaining blanks to avoid broken headers
+  // Fill any remaining blanks
   const counter = {}
   for (const c of cols) {
     if (c.label) continue
@@ -599,10 +537,9 @@ function parseGeneralRankings(rows) {
     c.label = `${sec} ${counter[sec]}`
   }
 
-  // ----------------- sectionToCols -----------------
   const sectionToCols = {}
 
-  // GENERAL RANKING (keep): Manager + YYYY
+  // GENERAL RANKING: Manager + YYYY
   sectionToCols["GENERAL RANKING"] = []
   const idxManager = hdr.findIndex((x) => norm(x) === "manager")
   if (idxManager >= 0 && sectionByIdx[idxManager] === "GENERAL RANKING") {
@@ -610,37 +547,29 @@ function parseGeneralRankings(rows) {
   }
   for (const i of yearIdxs) sectionToCols["GENERAL RANKING"].push(i)
 
-  // POINTS SYSTEM (fixed by separator): seasons + Total/League/Extra/Total3Y
+  // POINTS SYSTEM: seasons + totals
   sectionToCols["POINTS SYSTEM"] = [...psSeasons, ...psTotals]
 
-  // AWARDS (fixed by separator): use the awards block we just derived
+  // AWARDS: derived block
   sectionToCols.AWARDS = awardsBlock
 
-  // REGULAR SEASON PERFORMANCE (keep): fixed list by label match (as you had)
+  // RSP: fixed list by label match
   sectionToCols["REGULAR SEASON PERFORMANCE"] = []
   for (const name of WANT["REGULAR SEASON PERFORMANCE"].fixed) {
     const idx = cols.find((c) => c.section === "REGULAR SEASON PERFORMANCE" && norm(c.label) === norm(name))?.idx
     if (idx != null) sectionToCols["REGULAR SEASON PERFORMANCE"].push(idx)
   }
 
-  // Debug (optional)
   console.log("[All] idx2020:", idx2020, "startPS:", startPS, "sepAfterPS:", sepAfterPS)
   console.log("[All] psSeasons:", psSeasons.map((i) => cols[i].label), "psTotals:", psTotals.map((i) => cols[i].label))
   console.log("[All] awardsStart:", awardsStart, "awardsCols:", awardsBlock.length)
 
-  return {
-    cols,
-    data,
-    idxRank,
-    idxTeam,
-    knownSections: KNOWN,
-    sectionToCols,
-  }
+  return { cols, data, idxRank, idxTeam, knownSections: KNOWN, sectionToCols }
 }
 
 /* ----------------------------- UI bits ----------------------------- */
 
-function DivisionButton({ to, title, subtitle }) {
+function BigNavCard({ to, title, subtitle }) {
   return (
     <Link to={to} style={{ textDecoration: "none" }}>
       <div
@@ -664,6 +593,10 @@ function DivisionButton({ to, title, subtitle }) {
   )
 }
 
+function DivisionButton({ to, title, subtitle }) {
+  return <BigNavCard to={to} title={title} subtitle={subtitle} />
+}
+
 function Tabs({ value, onChange }) {
   const pill = (active) => ({
     display: "inline-flex",
@@ -678,6 +611,7 @@ function Tabs({ value, onChange }) {
     letterSpacing: 0.3,
     cursor: "pointer",
     userSelect: "none",
+    textDecoration: "none",
   })
 
   return (
@@ -685,6 +619,7 @@ function Tabs({ value, onChange }) {
       <button type="button" style={pill(value === "groups")} onClick={() => onChange("groups")}>
         Groups
       </button>
+
       <button type="button" style={pill(value === "general")} onClick={() => onChange("general")}>
         General Rankings
       </button>
@@ -860,13 +795,11 @@ function GeneralRankingsTable({ parsed, view, onViewChange }) {
 
   const [sort, setSort] = useState({ colIdx: idxRank, dir: "asc" })
 
-  // reset sort when view changes (optional, feels nicer)
   const sortedData = useMemo(() => {
     return sortRowsStable(
       data,
       (row) => {
         const v = row?.[sort.colIdx]
-        // 👇 treat blank as 0 for sorting
         return s(v) ? v : "0"
       },
       sort.dir
@@ -919,11 +852,7 @@ function GeneralRankingsTable({ parsed, view, onViewChange }) {
     const wrap = shouldWrapHeader(i)
 
     const sticky =
-      isRank
-        ? { left: 0, zIndex: 3, background: stickyBg }
-        : isTeam
-        ? { left: wRank, zIndex: 3, background: stickyBg }
-        : {}
+      isRank ? { left: 0, zIndex: 3, background: stickyBg } : isTeam ? { left: wRank, zIndex: 3, background: stickyBg } : {}
 
     return {
       ...thBase,
@@ -941,21 +870,18 @@ function GeneralRankingsTable({ parsed, view, onViewChange }) {
         : {}),
       ...(isTeam ? { width: wTeam, whiteSpace: "normal", overflowWrap: "normal", wordBreak: "normal", maxWidth: wTeam } : {}),
       ...(isManagerCol(i) ? { whiteSpace: "normal", overflowWrap: "normal", wordBreak: "normal", maxWidth: 160 } : {}),
-
-      // ✅ ONLY for REGULAR SEASON PERFORMANCE metric columns:
       ...(wrap
-  ? {
-      whiteSpace: "normal",
-      lineHeight: 1.1,
-      overflowWrap: "normal",
-      wordBreak: "normal",
-      hyphens: "auto",
-      maxWidth: 92,
-      minWidth: 72,
-      overflow: "hidden", // ✅ prevents bleeding into next column
-    }
-  : { whiteSpace: "nowrap" }),
-
+        ? {
+            whiteSpace: "normal",
+            lineHeight: 1.1,
+            overflowWrap: "normal",
+            wordBreak: "normal",
+            hyphens: "auto",
+            maxWidth: 92,
+            minWidth: 72,
+            overflow: "hidden",
+          }
+        : { whiteSpace: "nowrap" }),
       ...sticky,
     }
   }
@@ -965,11 +891,7 @@ function GeneralRankingsTable({ parsed, view, onViewChange }) {
     const isTeam = i === idxTeam
 
     const sticky =
-      isRank
-        ? { position: "sticky", left: 0, zIndex: 2, background: stickyBg }
-        : isTeam
-        ? { position: "sticky", left: wRank, zIndex: 2, background: stickyBg }
-        : {}
+      isRank ? { position: "sticky", left: 0, zIndex: 2, background: stickyBg } : isTeam ? { position: "sticky", left: wRank, zIndex: 2, background: stickyBg } : {}
 
     return {
       ...tdBase,
@@ -1042,25 +964,15 @@ function GeneralRankingsTable({ parsed, view, onViewChange }) {
             <tr>
               {renderCols.map((i) => (
                 <th key={i} style={thStyleFor(i)} onClick={() => onSort(i)} title="Sort">
-                  <div
-  style={{
-    display: "flex",
-    gap: 6,
-    alignItems: "center",
-    flexWrap: "wrap",   // ✅ allows wrapping
-    minWidth: 0,        // ✅ allows shrinking inside fixed table layout
-  }}
->
-  <span style={{ minWidth: 0 }}>
-    {cols[i]?.label || `Col ${i + 1}`}
-  </span>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
+                    <span style={{ minWidth: 0 }}>{cols[i]?.label || `Col ${i + 1}`}</span>
 
-  {sort.colIdx === i && (
-    <span style={{ fontSize: 11, opacity: 0.75, whiteSpace: "nowrap" }}>
-      {sort.dir === "asc" ? "▲" : "▼"}
-    </span>
-  )}
-</div>
+                    {sort.colIdx === i && (
+                      <span style={{ fontSize: 11, opacity: 0.75, whiteSpace: "nowrap" }}>
+                        {sort.dir === "asc" ? "▲" : "▼"}
+                      </span>
+                    )}
+                  </div>
                 </th>
               ))}
             </tr>
@@ -1200,7 +1112,13 @@ export default function Home() {
           <DivisionButton to="/division/Γ" title="Division Γ" subtitle="Οι 'Ωωωω τι ψαγμενιές ειναι αυτές ρε; Καλή φάση' — leagues Γ1, Γ2…" />
         </div>
 
-        {/* Tabs below divisions */}
+        {/* ✅ Big boxes under divisions */}
+        <div className="divisionGrid sideBySideExtras" style={{ marginTop: 14 }}>
+          <BigNavCard to="/champions-league" title="Champions League" subtitle="Matchups • Winner/Runner-up • Group Standings" />
+          <BigNavCard to="/history" title="History" subtitle="Trophies • Placements • Past Seasons & Records" />
+        </div>
+
+        {/* Tabs below (only groups/general now) */}
         <div style={{ marginTop: 14 }}>
           <Tabs value={tab} onChange={setTab} />
         </div>
@@ -1241,12 +1159,20 @@ export default function Home() {
                     gap: 14px;
                   }
 
+                  .sideBySideExtras{
+                    display: grid;
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    gap: 14px;
+                  }
+
                   @media (max-width: 1100px){
                     .sideBySideDivisions{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+                    .sideBySideExtras{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
                     .groupsGrid{ grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
                   }
                   @media (max-width: 720px){
                     .sideBySideDivisions{ grid-template-columns: 1fr; }
+                    .sideBySideExtras{ grid-template-columns: 1fr; }
                     .groupsGrid{ grid-template-columns: 1fr !important; }
                   }
                 `}</style>
@@ -1283,11 +1209,19 @@ export default function Home() {
                     grid-template-columns: repeat(3, minmax(0, 1fr));
                     gap: 14px;
                   }
+                  .sideBySideExtras{
+                    display: grid;
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    gap: 14px;
+                  }
+
                   @media (max-width: 1100px){
                     .sideBySideDivisions{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+                    .sideBySideExtras{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
                   }
                   @media (max-width: 720px){
                     .sideBySideDivisions{ grid-template-columns: 1fr; }
+                    .sideBySideExtras{ grid-template-columns: 1fr; }
                   }
 
                   /* ✅ Mobile tightening: allow wrap ONLY on spaces (not letters) */

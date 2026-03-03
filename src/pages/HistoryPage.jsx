@@ -55,9 +55,7 @@ function parseStat(_col, v) {
 /* ----------------------------- CSV fetch + parse ----------------------------- */
 
 function csvUrl(sheetId, gid) {
-  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${encodeURIComponent(
-    gid
-  )}`
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${encodeURIComponent(gid)}`
 }
 
 // Simple but solid CSV parser (quoted commas + escaped quotes)
@@ -254,10 +252,7 @@ export default function HistoryPage() {
 
   // Resolve which keys to use per tab (if _2 doesn't exist, fallback to base)
   const tabRankKey = useMemo(() => pickKey(items, RANK_COL, activeTab), [items, activeTab])
-  const tabLeagueRankKey = useMemo(
-    () => pickKey(items, LEAGUE_RANK_COL, activeTab),
-    [items, activeTab]
-  )
+  const tabLeagueRankKey = useMemo(() => pickKey(items, LEAGUE_RANK_COL, activeTab), [items, activeTab])
 
   const tabCols = useMemo(() => {
     // columns for the active tab (GP vs GP_2 etc), with fallback if missing
@@ -319,12 +314,12 @@ export default function HistoryPage() {
 
       out[col] = {
         top5: new Set(arr.slice(0, 5).map((x) => x.team)),
-        bottom5: new Set(arr.slice(-5).map((x) => x.team))
+        bottom5: new Set(arr.slice(-5).map((x) => x.team)),
       }
     }
 
     return out
-  }, [items, tabCols])
+  }, [items, tabCols, activeTab])
 
   // Full standings sorted by (tab) Category Standing
   const fullSorted = useMemo(() => {
@@ -340,11 +335,10 @@ export default function HistoryPage() {
     padding: "8px 10px",
     borderRadius: 12,
     fontWeight: 800,
-    boxShadow: "0 6px 18px rgba(2,6,23,.06)"
+    boxShadow: "0 6px 18px rgba(2,6,23,.06)",
   }
 
   const hasSecondSet = useMemo(() => {
-    // if any of the important columns exist with _2, enable Rankings tab
     const sample = [`${RANK_COL}_2`, `${LEAGUE_RANK_COL}_2`, ...BASE_COLS.map((c) => `${c}_2`)]
     return items.some((r) => sample.some((k) => s(r?.[k])))
   }, [items])
@@ -368,25 +362,35 @@ export default function HistoryPage() {
             </div>
           </div>
 
+          {/* ✅ Right controls: Back + Home + Year (same pattern as other pages) */}
           <div className="brandRight">
-            <select
-              value={year}
-              onChange={(e) => navigate(`/history/${encodeURIComponent(e.target.value)}`)}
-              style={yearSelectStyle}
-              aria-label="Select year"
-              disabled={loading || !yearOptions.length}
-            >
-              {yearOptions.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
+  <button
+    type="button"
+    className="badge"
+    onClick={() => navigate(-1)}
+    style={{ textDecoration: "none" }}
+  >
+    Back
+  </button>
 
-            <Link to="/" className="ghostBtn">
-              Home
-            </Link>
-          </div>
+  <Link to="/" className="badge" style={{ textDecoration: "none" }}>
+    Home
+  </Link>
+
+  <select
+    value={year}
+    onChange={(e) => navigate(`/history/${encodeURIComponent(e.target.value)}`)}
+    style={yearSelectStyle}
+    aria-label="Select year"
+    disabled={loading || !yearOptions.length}
+  >
+    {yearOptions.map((y) => (
+      <option key={y} value={y}>
+        {y}
+      </option>
+    ))}
+  </select>
+</div>
         </div>
       </div>
 
@@ -432,11 +436,6 @@ export default function HistoryPage() {
                     Rankings
                   </button>
                 </div>
-
-                {/* optional debug */}
-                {/* <div style={{ marginTop: 10, fontSize: 12, color: "rgba(15,23,42,.6)", fontWeight: 900 }}>
-                  headers: {headers.join(" | ")}
-                </div> */}
               </div>
 
               <div className="card">
@@ -480,7 +479,6 @@ export default function HistoryPage() {
                       <th className="colTeam">Team</th>
                       {tabCols.map((h, i) => (
                         <th key={`${h}-${i}`} className="colStat">
-                          {/* show base label, not suffix */}
                           {BASE_COLS[i]}
                         </th>
                       ))}
@@ -516,11 +514,7 @@ export default function HistoryPage() {
 
                             return (
                               <td key={`${colKey}-${i}`} className="numCell">
-                                {pillClass ? (
-                                  <span className={pillClass}>{cell(v)}</span>
-                                ) : (
-                                  <span className="num">{cell(v)}</span>
-                                )}
+                                {pillClass ? <span className={pillClass}>{cell(v)}</span> : <span className="num">{cell(v)}</span>}
                               </td>
                             )
                           })}
@@ -596,6 +590,35 @@ const styles = `
   padding: 14px 16px;
 }
 
+.navPill{
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 8px 14px;
+  border-radius: 999px;
+
+  border: 1.5px solid rgba(249,115,22,.55);
+  background: rgba(249,115,22,.06);
+
+  color: rgba(15,23,42,.95);
+  font-weight: 900;
+  letter-spacing: .2px;
+
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 6px 18px rgba(2,6,23,.06);
+}
+
+.navPill:hover{
+  border-color: rgba(249,115,22,.75);
+  background: rgba(249,115,22,.10);
+}
+.navPill:active{
+  transform: translateY(1px);
+}
+
 .brandRow {
   max-width: 1320px;
   margin: 0 auto;
@@ -618,17 +641,21 @@ const styles = `
 .crumbs { color: rgba(15,23,42,.70); font-size: 12.5px; font-weight: 700; margin-top: 3px; }
 
 .brandRight { display: flex; align-items: center; gap: 10px; }
-.ghostBtn {
-  text-decoration: none;
-  font-weight: 900;
-  color: #0f172a;
+
+/* ✅ match "everywhere else": simple top buttons */
+.topBtn{
+  appearance: none;
+  border: 1px solid rgba(15,23,42,.14);
+  background: rgba(255,255,255,.75);
+  color: rgba(15,23,42,.95);
   padding: 8px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(15,23,42,.12);
-  background: rgba(255,255,255,.65);
+  font-weight: 1000;
+  cursor: pointer;
   box-shadow: 0 6px 18px rgba(2,6,23,.06);
+  text-decoration: none;
 }
-.ghostBtn:hover { border-color: rgba(249,115,22,.35); }
+.topBtn:hover{ border-color: rgba(249,115,22,.35); }
 
 .histWrap { max-width: 1320px; margin: 0 auto; padding: 16px; }
 

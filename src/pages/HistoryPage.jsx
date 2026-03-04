@@ -25,11 +25,29 @@ function teamHref(teamName) {
   return `/team/${encodeURIComponent(s(teamName))}`
 }
 
+function deduceDivisionFromLeague(leagueVal) {
+  const t = s(leagueVal)
+  if (!t) return ""
+
+  const first = t[0]
+  if (first === "A" || first === "a") return "A"
+  if (first === "B" || first === "b") return "B"
+  if (first === "Γ" || first === "γ") return "Γ"
+  if (first === "G" || first === "g") return "Γ" // optional fallback
+
+  if (/\bA\d/i.test(t)) return "A"
+  if (/\bB\d/i.test(t)) return "B"
+  if (t.includes("Γ") || t.includes("γ")) return "Γ"
+
+  return ""
+}
+
 /* ----------------------------- config ----------------------------- */
 
 const TEAM_COL = "Team"
 const LEAGUE_COL = "League"
 const LEAGUE_RANK_COL = "League Ranking"
+const PLAYOFFS_COL = "Playoffs"
 
 // These exist (sometimes twice). Tab picks which version to use.
 const RANK_COL = "Category Standing"
@@ -122,7 +140,6 @@ function findHeaderRowIndex(rows) {
 
 /**
  * If header appears twice, rename 2nd occurrence to "X_2", 3rd to "X_3" etc.
- * Example: GP, FG%, ... => GP_2, FG%_2 ...
  */
 function dedupeHeadersWithNumericSuffix(headerRow) {
   const seen = new Map()
@@ -174,13 +191,10 @@ function buildItemsFromSingleHeader(rows) {
 /* ----------------------------- tab helpers ----------------------------- */
 
 function keyForTab(baseKey, tab) {
-  // totals -> first occurrence
-  // rankings -> second occurrence (suffix _2)
   return tab === "rankings" ? `${baseKey}_2` : baseKey
 }
 
 function pickKey(items, baseKey, tab) {
-  // Use tab key if it exists anywhere, else fallback to base key
   const k = keyForTab(baseKey, tab)
   const hasTabKey = items?.some((r) => r && r[k] != null && s(r[k]) !== "")
   return hasTabKey ? k : baseKey
@@ -233,7 +247,6 @@ export default function HistoryPage() {
         setHeaders(built.headers)
         setItems(built.items)
 
-        // default tab = totals
         setActiveTab("totals")
       } catch (e) {
         if (!alive) return
@@ -253,19 +266,24 @@ export default function HistoryPage() {
   // Resolve which keys to use per tab (if _2 doesn't exist, fallback to base)
   const tabRankKey = useMemo(() => pickKey(items, RANK_COL, activeTab), [items, activeTab])
   const tabLeagueRankKey = useMemo(() => pickKey(items, LEAGUE_RANK_COL, activeTab), [items, activeTab])
+  const tabPlayoffsKey = useMemo(() => pickKey(items, PLAYOFFS_COL, activeTab), [items, activeTab])
 
   const tabCols = useMemo(() => {
-    // columns for the active tab (GP vs GP_2 etc), with fallback if missing
     return BASE_COLS.map((c) => pickKey(items, c, activeTab))
   }, [items, activeTab])
 
-  // Podiums: Top 3 per league based on League + League Ranking (tab-sensitive for ranking key)
+  /* ----------------------------- Podiums (per league) ----------------------------- */
+  // winner -> 1st
+  // final -> 2nd
+  // semifinal -> 3rd/4th (up to 2 teams)
+  //
+  // Rule: If a league has no explicit "winner", but it contains a "champion" row,
+  // that champion is also the winner of his league -> show him as #1.
   const leagueCards = useMemo(() => {
     if (!items?.length) return []
 
     const hasLeague = items.some((r) => s(r?.[LEAGUE_COL]))
-    const hasLeagueRank = items.some((r) => s(r?.[tabLeagueRankKey]))
-    if (!hasLeague || !hasLeagueRank) return []
+    if (!hasLeague) return []
 
     const map = new Map()
     for (const r of items) {
@@ -279,14 +297,93 @@ export default function HistoryPage() {
       a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
     )
 
+    function playoffsTag(row) {
+      return norm(row?.[tabPlayoffsKey])
+    }
+
+    function pickOne(rows, tag) {
+      return rows.find((r) => playoffsTag(r) === tag) || null
+    }
+
+    function pickMany(rows, tag, limit = 2) {
+      return rows.filter((r) => playoffsTag(r) === tag).slice(0, limit)
+    }
+
     return leagueKeys.map((lk) => {
       const rows = map.get(lk) || []
+
+      const anyPlayoffLabels = rows.some((r) => {
+        const t = playoffsTag(r)
+        return t === "winner" || t === "final" || t === "semifinal" || t === "champion"
+      })
+
+      if (anyPlayoffLabels) {
+        const explicitWinner = pickOne(rows, "winner")
+        const championRow = pickOne(rows, "champion")
+        const winner = explicitWinner || championRow
+
+        const final = pickOne(rows, "final")
+        const semis = pickMany(rows, "semifinal", 2)
+
+        const podium = []
+        if (winner) podium.push({ pos: "1", pillClass: "r1", row: winner })
+        if (final) podium.push({ pos: "2", pillClass: "r2", row: final })
+        for (const r of semis) podium.push({ pos: "3/4", pillClass: "r34", row: r })
+
+        return { league: lk, total: rows.length, podium, mode: "playoffs" }
+      }
+
+      // fallback: League Ranking top 3
       const sorted = [...rows].sort(
         (x, y) => (toNum(x?.[tabLeagueRankKey]) ?? 999999) - (toNum(y?.[tabLeagueRankKey]) ?? 999999)
       )
-      return { league: lk, total: rows.length, top3: sorted.slice(0, 3) }
+      const top3 = sorted.slice(0, 3).map((r, i) => ({
+        pos: String(toNum(r?.[tabLeagueRankKey]) ?? i + 1),
+        pillClass: i === 0 ? "r1" : i === 1 ? "r2" : "r3",
+        row: r,
+      }))
+      return { league: lk, total: rows.length, podium: top3, mode: "leagueRank" }
     })
-  }, [items, tabLeagueRankKey])
+  }, [items, tabLeagueRankKey, tabPlayoffsKey])
+
+  /* ----------------------------- Division Champions (A/B/Γ) ----------------------------- */
+  const divisionChampions = useMemo(() => {
+    if (!items?.length) return []
+
+    const tag = (r) => norm(r?.[tabPlayoffsKey])
+    const champs = items.filter((r) => tag(r) === "champion")
+
+    const byDiv = { A: [], B: [], "Γ": [] }
+    for (const r of champs) {
+      const div = deduceDivisionFromLeague(r?.[LEAGUE_COL])
+      if (div && byDiv[div]) byDiv[div].push(r)
+    }
+
+    function pickBest(arr) {
+      if (!arr?.length) return null
+      const copy = [...arr]
+      copy.sort((x, y) => {
+        const lrX = toNum(x?.[tabLeagueRankKey])
+        const lrY = toNum(y?.[tabLeagueRankKey])
+        if (lrX != null || lrY != null) return (lrX ?? 999999) - (lrY ?? 999999)
+
+        const crX = toNum(x?.[tabRankKey])
+        const crY = toNum(y?.[tabRankKey])
+        return (crX ?? 999999) - (crY ?? 999999)
+      })
+      return copy[0]
+    }
+
+    return ["A", "B", "Γ"].map((div) => {
+      const row = pickBest(byDiv[div])
+      return {
+        div,
+        row,
+        team: s(row?.[TEAM_COL]),
+        league: s(row?.[LEAGUE_COL]),
+      }
+    })
+  }, [items, tabPlayoffsKey, tabLeagueRankKey, tabRankKey])
 
   // Top/bottom 5 per category for ACTIVE tab
   const catRanks = useMemo(() => {
@@ -294,7 +391,7 @@ export default function HistoryPage() {
 
     for (let i = 0; i < BASE_COLS.length; i++) {
       const baseCol = BASE_COLS[i]
-      const col = tabCols[i] // resolved key (e.g., GP or GP_2)
+      const col = tabCols[i]
 
       const arr = items
         .map((r) => {
@@ -362,35 +459,29 @@ export default function HistoryPage() {
             </div>
           </div>
 
-          {/* ✅ Right controls: Back + Home + Year (same pattern as other pages) */}
           <div className="brandRight">
-  <button
-    type="button"
-    className="badge"
-    onClick={() => navigate(-1)}
-    style={{ textDecoration: "none" }}
-  >
-    Back
-  </button>
+            <button type="button" className="badge" onClick={() => navigate(-1)} style={{ textDecoration: "none" }}>
+              Back
+            </button>
 
-  <Link to="/" className="badge" style={{ textDecoration: "none" }}>
-    Home
-  </Link>
+            <Link to="/" className="badge" style={{ textDecoration: "none" }}>
+              Home
+            </Link>
 
-  <select
-    value={year}
-    onChange={(e) => navigate(`/history/${encodeURIComponent(e.target.value)}`)}
-    style={yearSelectStyle}
-    aria-label="Select year"
-    disabled={loading || !yearOptions.length}
-  >
-    {yearOptions.map((y) => (
-      <option key={y} value={y}>
-        {y}
-      </option>
-    ))}
-  </select>
-</div>
+            <select
+              value={year}
+              onChange={(e) => navigate(`/history/${encodeURIComponent(e.target.value)}`)}
+              style={yearSelectStyle}
+              aria-label="Select year"
+              disabled={loading || !yearOptions.length}
+            >
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -400,7 +491,6 @@ export default function HistoryPage() {
 
         {!loading && !err && (
           <>
-            {/* Top row */}
             <div className="topRow">
               <div className="card">
                 <div className="cardHead">
@@ -416,7 +506,6 @@ export default function HistoryPage() {
                   <span className="chip">Header: col B = Team</span>
                 </div>
 
-                {/* Tabs */}
                 <div className="tabs" style={{ marginTop: 12 }}>
                   <button
                     className={`tabBtn ${activeTab === "totals" ? "active" : ""}`}
@@ -441,23 +530,55 @@ export default function HistoryPage() {
               <div className="card">
                 <div className="cardHead">
                   <div className="cardTitle">Podiums</div>
-                  <div className="cardMeta">Top 3 per league</div>
+                  <div className="cardMeta">Per league (from Playoffs column)</div>
                 </div>
 
                 {leagueCards.length ? (
-                  <div className="leagueGrid">
-                    {leagueCards.map((c) => (
-                      <LeaguePodiumCard
-                        key={`${activeTab}-${c.league}`}
-                        league={c.league}
-                        total={c.total}
-                        top3={c.top3}
-                        leagueRankKey={tabLeagueRankKey}
-                      />
-                    ))}
-                  </div>
+                  <>
+                    {/* ✅ Division Champions (trophy ONLY inside this pill) */}
+                    <div className="divChampRow">
+                      {divisionChampions.map((c) => (
+                        <div key={`divchamp-${activeTab}-${c.div}`} className="divChampCard">
+                          <div className="divChampTop">
+                            <div className="divChampTitle">Division {c.div}</div>
+                            <div className="divChampBadge">
+                              <span className="trophyInPill" aria-hidden="true">
+                                🏆
+                              </span>
+                              CHAMPION
+                            </div>
+                          </div>
+
+                          {c.team ? (
+                            <>
+                              <div className="divChampTeam">
+                                <Link className="teamLink" to={teamHref(c.team)}>
+                                  {c.team}
+                                </Link>
+                              </div>
+                              <div className="divChampMeta">League: {c.league || "—"}</div>
+                            </>
+                          ) : (
+                            <div className="divChampEmpty">No champion yet</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="leagueGrid">
+                      {leagueCards.map((c) => (
+                        <LeaguePodiumCard
+                          key={`${activeTab}-${c.league}`}
+                          league={c.league}
+                          total={c.total}
+                          podium={c.podium}
+                          mode={c.mode}
+                        />
+                      ))}
+                    </div>
+                  </>
                 ) : (
-                  <div className="noteLite">No League/League Ranking columns found.</div>
+                  <div className="noteLite">No League column found.</div>
                 )}
               </div>
             </div>
@@ -477,6 +598,7 @@ export default function HistoryPage() {
                     <tr>
                       <th className="colRank">#</th>
                       <th className="colTeam">Team</th>
+                      <th className="colLeague">League</th>
                       {tabCols.map((h, i) => (
                         <th key={`${h}-${i}`} className="colStat">
                           {BASE_COLS[i]}
@@ -488,6 +610,7 @@ export default function HistoryPage() {
                   <tbody>
                     {fullSorted.map((r, idx) => {
                       const team = s(r?.[TEAM_COL])
+                      const league = s(r?.[LEAGUE_COL])
                       const rank = toNum(r?.[tabRankKey]) ?? idx + 1
 
                       return (
@@ -504,6 +627,8 @@ export default function HistoryPage() {
                             )}
                           </td>
 
+                          <td className="leagueCell">{league || "—"}</td>
+
                           {tabCols.map((colKey, i) => {
                             const v = r?.[colKey]
                             const info = catRanks[colKey] || { top5: new Set(), bottom5: new Set() }
@@ -514,7 +639,11 @@ export default function HistoryPage() {
 
                             return (
                               <td key={`${colKey}-${i}`} className="numCell">
-                                {pillClass ? <span className={pillClass}>{cell(v)}</span> : <span className="num">{cell(v)}</span>}
+                                {pillClass ? (
+                                  <span className={pillClass}>{cell(v)}</span>
+                                ) : (
+                                  <span className="num">{cell(v)}</span>
+                                )}
                               </td>
                             )
                           })}
@@ -536,12 +665,14 @@ export default function HistoryPage() {
 
 /* ----------------------------- Podium Card (NO manager) ----------------------------- */
 
-function LeaguePodiumCard({ league, total, top3, leagueRankKey }) {
+function LeaguePodiumCard({ league, total, podium, mode }) {
   return (
     <div className="leagueCard">
       <div className="leagueCardHead">
         <div className="leagueTitle">{league}</div>
-        <div className="leagueMeta">{total} teams</div>
+        <div className="leagueMeta">
+          {total} teams • {mode === "playoffs" ? "Playoffs" : "League Ranking"}
+        </div>
       </div>
 
       <div className="podTable">
@@ -550,14 +681,12 @@ function LeaguePodiumCard({ league, total, top3, leagueRankKey }) {
           <div className="cTeam">Team</div>
         </div>
 
-        {top3.map((r, i) => {
-          const lr = toNum(r?.[leagueRankKey]) ?? i + 1
-          const team = s(r?.[TEAM_COL])
-
+        {podium.map((p, i) => {
+          const team = s(p?.row?.[TEAM_COL])
           return (
             <div className="podRow" key={`${league}-${i}`}>
               <div className="cRank">
-                <span className={`rankPill r${Math.min(3, i + 1)}`}>{lr}</span>
+                <span className={`rankPill ${p.pillClass}`}>{p.pos}</span>
               </div>
 
               <div className="cTeam">
@@ -573,7 +702,7 @@ function LeaguePodiumCard({ league, total, top3, leagueRankKey }) {
           )
         })}
 
-        {!top3.length && <div className="empty">No teams found for this league.</div>}
+        {!podium.length && <div className="empty">No podium rows found for this league.</div>}
       </div>
     </div>
   )
@@ -588,35 +717,6 @@ const styles = `
   background: #eaf6f6;
   border-bottom: 1px solid rgba(15,23,42,.08);
   padding: 14px 16px;
-}
-
-.navPill{
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-
-  padding: 8px 14px;
-  border-radius: 999px;
-
-  border: 1.5px solid rgba(249,115,22,.55);
-  background: rgba(249,115,22,.06);
-
-  color: rgba(15,23,42,.95);
-  font-weight: 900;
-  letter-spacing: .2px;
-
-  cursor: pointer;
-  user-select: none;
-  box-shadow: 0 6px 18px rgba(2,6,23,.06);
-}
-
-.navPill:hover{
-  border-color: rgba(249,115,22,.75);
-  background: rgba(249,115,22,.10);
-}
-.navPill:active{
-  transform: translateY(1px);
 }
 
 .brandRow {
@@ -641,21 +741,6 @@ const styles = `
 .crumbs { color: rgba(15,23,42,.70); font-size: 12.5px; font-weight: 700; margin-top: 3px; }
 
 .brandRight { display: flex; align-items: center; gap: 10px; }
-
-/* ✅ match "everywhere else": simple top buttons */
-.topBtn{
-  appearance: none;
-  border: 1px solid rgba(15,23,42,.14);
-  background: rgba(255,255,255,.75);
-  color: rgba(15,23,42,.95);
-  padding: 8px 12px;
-  border-radius: 12px;
-  font-weight: 1000;
-  cursor: pointer;
-  box-shadow: 0 6px 18px rgba(2,6,23,.06);
-  text-decoration: none;
-}
-.topBtn:hover{ border-color: rgba(249,115,22,.35); }
 
 .histWrap { max-width: 1320px; margin: 0 auto; padding: 16px; }
 
@@ -728,6 +813,76 @@ const styles = `
 }
 .tabBtn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 
+/* ✅ Division champions row */
+.divChampRow{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+@media (max-width: 920px){
+  .divChampRow{ grid-template-columns: 1fr; }
+}
+
+.divChampCard{
+  border: 1px solid rgba(15,23,42,.10);
+  background: rgba(255,255,255,.86);
+  border-radius: 16px;
+  padding: 12px;
+  box-shadow: 0 12px 26px rgba(2,6,23,.05);
+}
+
+.divChampTop{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.divChampTitle{
+  font-weight: 1000;
+  font-size: 14px;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: rgba(15,23,42,.85);
+}
+
+.divChampBadge{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 1000;
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(249,115,22,.45);
+  background: rgba(249,115,22,.10);
+  color: rgba(15,23,42,.90);
+  white-space: nowrap;
+}
+.trophyInPill{ display:inline-flex; line-height: 1; }
+
+.divChampTeam{
+  font-size: 18px;
+  font-weight: 1000;
+  line-height: 1.15;
+}
+
+.divChampMeta{
+  margin-top: 6px;
+  font-weight: 900;
+  font-size: 12px;
+  color: rgba(15,23,42,.60);
+}
+
+.divChampEmpty{
+  font-weight: 900;
+  font-size: 13px;
+  color: rgba(15,23,42,.60);
+  padding: 10px 0 2px;
+}
+
 /* league podium cards grid */
 .leagueGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 1200px) { .leagueGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -757,10 +912,13 @@ const styles = `
   border-radius: 999px; font-weight: 1000; border: 1px solid rgba(15,23,42,.12);
   background: rgba(255,255,255,.7); box-shadow: 0 10px 20px rgba(2,6,23,.06);
   font-variant-numeric: tabular-nums;
+  padding: 0 8px;
+  white-space: nowrap;
 }
-.rankPill.r1 { border-color: rgba(245,158,11,.45); background: rgba(245,158,11,.14); }
-.rankPill.r2 { border-color: rgba(148,163,184,.55); background: rgba(148,163,184,.18); }
-.rankPill.r3 { border-color: rgba(234,88,12,.45); background: rgba(234,88,12,.14); }
+.rankPill.r1  { border-color: rgba(245,158,11,.45); background: rgba(245,158,11,.14); }
+.rankPill.r2  { border-color: rgba(148,163,184,.55); background: rgba(148,163,184,.18); }
+.rankPill.r3  { border-color: rgba(234,88,12,.45); background: rgba(234,88,12,.14); }
+.rankPill.r34 { border-color: rgba(234,88,12,.35); background: rgba(234,88,12,.10); }
 
 .teamLink { color: rgba(15,23,42,.95); font-weight: 1000; text-decoration: none; }
 .teamLink:hover { color: rgb(249,115,22); text-decoration: underline; }
@@ -775,7 +933,7 @@ const styles = `
   background: rgba(255,255,255,.85);
 }
 
-.tbl { width: 100%; border-collapse: collapse; min-width: 980px; }
+.tbl { width: 100%; border-collapse: collapse; min-width: 1060px; }
 .tbl th, .tbl td { padding: 9px 10px; border-bottom: 1px solid rgba(15,23,42,.08); font-size: 13px; }
 .tbl th {
   position: sticky; top: 0;
@@ -791,9 +949,11 @@ const styles = `
 
 .tbl tr:hover td { background: rgba(249,115,22,.06); }
 
-.tblTight { min-width: 980px; }
+.tblTight { min-width: 1060px; }
 .colRank { width: 54px; }
 .colTeam { min-width: 220px; }
+.colLeague { width: 86px; }
+.leagueCell { font-weight: 900; color: rgba(15,23,42,.70); }
 .colStat { width: 86px; }
 .rankCell { font-weight: 1000; }
 .numCell, .num { font-variant-numeric: tabular-nums; }

@@ -1,6 +1,7 @@
 // src/pages/ChampionsLeaguePage.jsx
 import React, { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
+import { RANKING_SHEET_ID, RANKING_GIDS } from "../config/rankingGids"
 
 /* ----------------------------- config ----------------------------- */
 
@@ -276,10 +277,10 @@ function parseChampionsBySections(csvRows) {
     }
 
     current.matchups.push({
-        matchupNo: a,
-        a: { team: team1, cols: rec1, bo: bo1 }, // ✅ keep raw B..O
-        b: { team: team2, cols: rec2, bo: bo2 }, // ✅ keep raw B..O
-        })
+      matchupNo: a,
+      a: { team: team1, cols: rec1, bo: bo1 }, // ✅ keep raw B..O
+      b: { team: team2, cols: rec2, bo: bo2 }, // ✅ keep raw B..O
+    })
 
     seenAny = true
     i += 2
@@ -296,27 +297,20 @@ function pickFinalPodium(parsed) {
   if (!parsed?.sections?.length) return null
 
   // Prefer FINALS section if it exists
-  const finalsSec =
-    [...parsed.sections].reverse().find(sec => /final/i.test(sec.title)) || null
-
+  const finalsSec = [...parsed.sections].reverse().find((sec) => /final/i.test(sec.title)) || null
   const sectionsToScan = finalsSec ? [finalsSec] : [...parsed.sections].reverse()
 
-  // Rule:
   // "The last 1 1 matchup that does not have a 2 2 below is the final."
-  // Interpreted within the same section: take the last matchupNo "1" where
-  // there is no later matchupNo "2" after it in that section.
   function findFinalMatchupInSection(sec) {
     const ms = sec?.matchups || []
     if (!ms.length) return null
 
-    // indices where matchupNo === "1"
     const ones = []
     for (let i = 0; i < ms.length; i++) {
       if (String(ms[i]?.matchupNo) === "1") ones.push(i)
     }
     if (!ones.length) return null
 
-    // pick last "1" that has no "2" after it
     for (let k = ones.length - 1; k >= 0; k--) {
       const idx1 = ones[k]
       let hasTwoAfter = false
@@ -337,7 +331,6 @@ function pickFinalPodium(parsed) {
     finalMatch = findFinalMatchupInSection(sec)
     if (finalMatch) break
   }
-
   if (!finalMatch) return null
 
   const aW = s(finalMatch?.a?.bo?.[IDX_IN_BO_N]).toUpperCase() === "W"
@@ -350,7 +343,6 @@ function pickFinalPodium(parsed) {
   const runnerUp = aW ? finalMatch.b?.team : finalMatch.a?.team
 
   if (!hasLetters(winner) || !hasLetters(runnerUp)) return null
-
   return { winner, runnerUp }
 }
 
@@ -444,7 +436,11 @@ function ScorePill({ label, value, tone }) {
     },
   }
 
-  return <span style={{ ...base, ...(tones[tone] || {}) }}>{label} {value}</span>
+  return (
+    <span style={{ ...base, ...(tones[tone] || {}) }}>
+      {label} {value}
+    </span>
+  )
 }
 
 function StatChip({ value, tone }) {
@@ -610,9 +606,321 @@ function MatchupCardCL({ matchup, statKeys, leagueKey }) {
   )
 }
 
+/* ----------------------------- Past Years (Champions League column) ----------------------------- */
+
+function headerFp(x) {
+  return norm(x).replace(/[^a-z0-9α-ω]/g, "")
+}
+
+function findHeaderRow(rows, maxScan = 12) {
+  const limit = Math.min(rows.length, maxScan)
+  let best = { rowIdx: 0, score: -1 }
+
+  for (let r = 0; r < limit; r++) {
+    const row = rows[r] || []
+    let score = 0
+
+    for (let c = 0; c < row.length; c++) {
+      const fp = headerFp(row[c])
+      if (!fp) continue
+      if (fp === "team" || fp.includes("team")) score += 3
+      if (fp === "playoffs" || fp.includes("playoffs")) score += 2
+      if (fp.includes("champ") && fp.includes("league")) score += 2
+      if (fp === "championsleague") score += 4
+    }
+
+    if (score > best.score) best = { rowIdx: r, score }
+  }
+
+  return best.rowIdx
+}
+
+function findColIndex(headerRow, predicate) {
+  for (let i = 0; i < headerRow.length; i++) {
+    if (predicate(headerRow[i], i)) return i
+  }
+  return -1
+}
+
+function findColIndexJoined(headerRow, predicateJoined, maxSpan = 3) {
+  // try joining header cells i..i+span-1 (handles split/merged headers)
+  for (let i = 0; i < headerRow.length; i++) {
+    let acc = ""
+    for (let span = 1; span <= maxSpan && i + span - 1 < headerRow.length; span++) {
+      const piece = s(headerRow[i + span - 1])
+      acc = acc ? `${acc} ${piece}` : piece
+      if (predicateJoined(acc, i, span)) return i
+    }
+  }
+  return -1
+}
+
+function parsePastChampionsLeagueResults(csvRows) {
+  if (!Array.isArray(csvRows) || csvRows.length < 2) return null
+
+  // ✅ detect real header row (often NOT row 0)
+  const hdrIdx = findHeaderRow(csvRows, 12)
+  const header = csvRows[hdrIdx] || []
+  const dataStart = hdrIdx + 1
+
+  // TEAM column
+  let idxTeam = findColIndex(header, (h) => {
+    const fp = headerFp(h)
+    return fp === "team" || fp.includes("team")
+  })
+
+  // CHAMPIONS LEAGUE column
+  let idxCL = findColIndex(header, (h) => headerFp(h) === "championsleague")
+  if (idxCL < 0) {
+    idxCL = findColIndex(header, (h) => {
+      const fp = headerFp(h)
+      return fp.includes("champ") && fp.includes("league")
+    })
+  }
+
+  // ✅ try joined headers (split across 2-3 cells)
+  if (idxCL < 0) {
+    idxCL = findColIndexJoined(header, (joined) => {
+      const fp = headerFp(joined)
+      return fp === "championsleague" || (fp.includes("champ") && fp.includes("league"))
+    }, 3)
+  }
+
+  // ✅ fallback: column right after Playoffs (also allow joined for playoffs)
+  if (idxCL < 0) {
+    let idxPlayoffs = findColIndex(header, (h) => {
+      const fp = headerFp(h)
+      return fp === "playoffs" || fp.includes("playoffs")
+    })
+    if (idxPlayoffs < 0) {
+      idxPlayoffs = findColIndexJoined(header, (joined) => {
+        const fp = headerFp(joined)
+        return fp === "playoffs" || fp.includes("playoffs")
+      }, 3)
+    }
+    if (idxPlayoffs >= 0 && idxPlayoffs + 1 < header.length) {
+      idxCL = idxPlayoffs + 1
+    }
+  }
+
+  if (idxTeam < 0 || idxCL < 0) return null
+
+  const buckets = {
+    Champion: [],
+    Final: [],
+    Semifinal: [],
+    "8": [],
+    Groupstage: [],
+  }
+
+  let emptyStreak = 0
+  for (let r = dataStart; r < csvRows.length; r++) {
+    const row = csvRows[r] || []
+    const team = s(row[idxTeam])
+    const valRaw = s(row[idxCL])
+
+    const looksEmpty = !team && !valRaw
+    if (looksEmpty) {
+      emptyStreak++
+      if (emptyStreak >= 5) break
+      continue
+    }
+    emptyStreak = 0
+
+    if (!hasLetters(team) || !valRaw) continue
+
+    const v = norm(valRaw)
+
+    if (v === "champion") buckets.Champion.push(team)
+    else if (v === "final") buckets.Final.push(team)
+    else if (v === "semifinal" || v === "semifinals") buckets.Semifinal.push(team)
+    else if (v === "8" || v === "8th" || v === "8thplace") buckets["8"].push(team)
+    else if (v === "groupstage" || v === "group stage" || v === "group-stage") buckets.Groupstage.push(team)
+  }
+
+  return buckets
+}
+
+function PastYearsCLBox({ years, year, setYear, loading, err, buckets }) {
+  const selectStyle = {
+    width: "100%",
+    height: 34,
+    borderRadius: 12,
+    padding: "0 10px",
+    fontWeight: 900,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(0,0,0,0.10)",
+    color: "var(--gnfc-ink)",
+    outline: "none",
+  }
+
+  const labelMap = {
+    Champion: "Champion",
+    Final: "Runner-up",
+    Semifinal: "Semifinal",
+    "8": "Final 8",
+    Groupstage: "Groupstage",
+  }
+
+  const order = ["Champion", "Final", "Semifinal", "8", "Groupstage"]
+
+  const pillStyle = (rawKey) => {
+    const label = labelMap[rawKey] || rawKey
+    const isChampion = rawKey === "Champion"
+    const isRunnerUp = rawKey === "Final"
+    const isFinal8 = rawKey === "8"
+
+    return {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      height: 22,
+      padding: "0 10px",
+      borderRadius: 999,
+      fontSize: 11,
+      fontWeight: 950,
+      letterSpacing: 0.25,
+      whiteSpace: "nowrap",
+      color: "var(--gnfc-muted)",
+      border: isChampion
+        ? "1px solid rgba(216,120,32,0.55)"
+        : isRunnerUp
+        ? "1px solid rgba(255,255,255,0.22)"
+        : isFinal8
+        ? "1px solid rgba(10,122,114,0.45)"
+        : "1px solid rgba(255,255,255,0.14)",
+      background: isChampion
+        ? "rgba(216,120,32,0.14)"
+        : isRunnerUp
+        ? "rgba(255,255,255,0.06)"
+        : isFinal8
+        ? "rgba(10,122,114,0.10)"
+        : "rgba(255,255,255,0.04)",
+    }
+  }
+
+  const headerRow = {
+    display: "grid",
+    gridTemplateColumns: "140px 1fr",
+    gap: 12,
+    padding: "8px 10px",
+    borderBottom: "1px solid rgba(255,255,255,0.10)",
+    color: "var(--gnfc-muted)",
+    fontSize: 12,
+    fontWeight: 950,
+    letterSpacing: 0.25,
+  }
+
+  const row = {
+    display: "grid",
+    gridTemplateColumns: "140px 1fr",
+    gap: 12,
+    padding: "10px 10px",
+    borderBottom: "1px solid rgba(255,255,255,0.08)",
+    alignItems: "start",
+  }
+
+  const teamWrap = {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "6px 12px",
+    fontWeight: 950,
+    lineHeight: 1.25,
+  }
+
+  const teamLink = {
+    textDecoration: "none",
+    color: "inherit",
+    padding: "2px 0",
+  }
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 950, letterSpacing: 0.35, color: "var(--gnfc-muted)" }}>
+        Past years (from “Champions League” column)
+      </div>
+
+      <div style={{ height: 8 }} />
+
+      <select value={year || ""} onChange={(e) => setYear(e.target.value)} style={selectStyle}>
+        {years.map((y) => (
+          <option key={y} value={y}>
+            {y}
+          </option>
+        ))}
+      </select>
+
+      <div style={{ height: 10 }} />
+
+      {loading ? (
+        <div style={{ color: "var(--gnfc-muted)", fontWeight: 900 }}>Loading…</div>
+      ) : err ? (
+        <div style={{ color: "var(--gnfc-muted)", fontWeight: 900 }}>{err}</div>
+      ) : buckets ? (
+        <div
+          style={{
+            borderRadius: 14,
+            border: "1px solid rgba(255,255,255,0.12)",
+            background: "rgba(0,0,0,0.06)",
+            overflow: "hidden",
+          }}
+        >
+          <div style={headerRow}>
+            <div>Stage</div>
+            <div>Teams</div>
+          </div>
+
+          {order.map((rawKey, i) => {
+            const label = labelMap[rawKey] || rawKey
+            const teams = buckets?.[rawKey] || []
+
+            return (
+              <div
+                key={rawKey}
+                style={{
+                  ...row,
+                  background: i % 2 === 0 ? "rgba(255,255,255,0.015)" : "rgba(0,0,0,0.06)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={pillStyle(rawKey)}>{label}</span>
+                </div>
+
+                <div style={teamWrap}>
+                  {teams.length ? (
+                    teams.map((t) => (
+                      <Link key={`${rawKey}-${t}`} to={teamHref(t)} className="teamLinkHover" style={teamLink}>
+                        {cell(t)}
+                      </Link>
+                    ))
+                  ) : (
+                    <span style={{ color: "var(--gnfc-muted)", fontWeight: 900 }}>—</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div style={{ color: "var(--gnfc-muted)", fontWeight: 900 }}>
+          Could not find “Team” + “Champions League” columns in that year.
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ----------------------------- podium + standings UI ----------------------------- */
 
-function Podium({ podium }) {
+function Podium({
+  podium,
+  pastYears,
+  pastYear,
+  setPastYear,
+  pastLoading,
+  pastErr,
+  pastBuckets,
+}) {
   const winner = podium?.winner || ""
   const runnerUp = podium?.runnerUp || ""
 
@@ -678,6 +986,18 @@ function Podium({ podium }) {
       <div style={{ marginTop: 12, fontSize: 12, color: "var(--gnfc-muted)" }}>
         Source: FINAL result (winner row has “W” in column N).
       </div>
+
+      {/* ✅ Past years dropdown under podium */}
+      {pastYears?.length ? (
+        <PastYearsCLBox
+          years={pastYears}
+          year={pastYear}
+          setYear={setPastYear}
+          loading={pastLoading}
+          err={pastErr}
+          buckets={pastBuckets}
+        />
+      ) : null}
     </div>
   )
 }
@@ -687,7 +1007,6 @@ function GroupStandingsTable({ rows }) {
 
   return (
     <div>
-      {/* Title line like the screenshot */}
       <div
         className="sectionTitle"
         style={{
@@ -699,14 +1018,11 @@ function GroupStandingsTable({ rows }) {
         }}
       >
         <span className="badge">Standings</span>
-        <span style={{ color: "var(--gnfc-muted)", fontSize: 13 }}>
-          Before matchup • total statistics
-        </span>
+        <span style={{ color: "var(--gnfc-muted)", fontSize: 13 }}>Before matchup • total statistics</span>
       </div>
 
       <div style={{ height: 10 }} />
 
-      {/* Card + table like the screenshot */}
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
@@ -743,27 +1059,15 @@ function GroupStandingsTable({ rows }) {
                   </td>
 
                   <td style={{ ...tdStyle, textAlign: "left", fontWeight: 950 }}>
-                    <Link
-                      to={teamHref(r.team)}
-                      className="teamLinkHover"
-                      style={{ textDecoration: "none", color: "inherit" }}
-                    >
+                    <Link to={teamHref(r.team)} className="teamLinkHover" style={{ textDecoration: "none", color: "inherit" }}>
                       {cell(r.team)}
                     </Link>
                   </td>
 
-                  <td style={{ ...tdStyle, textAlign: "right", fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>
-                    {cell(r.w)}
-                  </td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>
-                    {cell(r.l)}
-                  </td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>
-                    {cell(r.t)}
-                  </td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>
-                    {cell(r.wp)}
-                  </td>
+                  <td style={{ ...tdStyle, textAlign: "right", fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{cell(r.w)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{cell(r.l)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{cell(r.t)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{cell(r.wp)}</td>
                 </tr>
               ))}
             </tbody>
@@ -771,9 +1075,7 @@ function GroupStandingsTable({ rows }) {
         </div>
       </div>
 
-      <div style={{ marginTop: 10, color: "var(--gnfc-muted)", fontSize: 12 }}>
-        
-      </div>
+      <div style={{ marginTop: 10, color: "var(--gnfc-muted)", fontSize: 12 }}></div>
     </div>
   )
 }
@@ -786,6 +1088,18 @@ export default function ChampionsLeaguePage() {
   const [parsed, setParsed] = useState(null)
   const [standings, setStandings] = useState([])
   const [openSection, setOpenSection] = useState(null)
+
+  // ✅ past years state
+  const pastYears = useMemo(() => {
+    return Object.keys(RANKING_GIDS || {})
+      .filter((k) => /^\d{4}$/.test(k))
+      .sort((a, b) => Number(b) - Number(a))
+  }, [])
+
+  const [pastYear, setPastYear] = useState(() => pastYears?.[0] || "")
+  const [pastLoading, setPastLoading] = useState(false)
+  const [pastErr, setPastErr] = useState("")
+  const [pastBuckets, setPastBuckets] = useState(null)
 
   useEffect(() => {
     let alive = true
@@ -820,6 +1134,45 @@ export default function ChampionsLeaguePage() {
     if (!parsed?.sections?.length) return
     setOpenSection((prev) => (prev == null ? parsed.sections[0].title : prev))
   }, [parsed])
+
+  // ✅ fetch past-year CL results from ranking sheet
+  useEffect(() => {
+    if (!pastYear) return
+    const gid = RANKING_GIDS?.[pastYear]
+    if (!gid) {
+      setPastBuckets(null)
+      setPastErr(`Missing gid for year ${pastYear}`)
+      return
+    }
+
+    let alive = true
+    ;(async () => {
+      try {
+        setPastLoading(true)
+        setPastErr("")
+        setPastBuckets(null)
+
+        const res = await fetch(gvizCsvUrl(RANKING_SHEET_ID, gid))
+        const text = await res.text()
+        if (!res.ok) throw new Error(`Year ${pastYear} fetch failed: ${res.status} ${res.statusText}`)
+
+        const rows = parseCsv(text)
+        const buckets = parsePastChampionsLeagueResults(rows)
+
+        if (!alive) return
+        setPastBuckets(buckets)
+      } catch (e) {
+        if (!alive) return
+        setPastErr(e?.message || String(e))
+        setPastBuckets(null)
+      } finally {
+        if (!alive) return
+        setPastLoading(false)
+      }
+    })()
+
+    return () => (alive = false)
+  }, [pastYear])
 
   const leagueColKey = useMemo(() => parsed?.colDefs?.find((d) => norm(d.key) === "league")?.key || null, [parsed])
 
@@ -881,7 +1234,16 @@ export default function ChampionsLeaguePage() {
           <>
             {/* Podium + Group Standings side-by-side */}
             <div className="clTopGrid">
-              <Podium podium={podium} />
+              <Podium
+                podium={podium}
+                pastYears={pastYears}
+                pastYear={pastYear}
+                setPastYear={setPastYear}
+                pastLoading={pastLoading}
+                pastErr={pastErr}
+                pastBuckets={pastBuckets}
+              />
+
               {standings?.length ? (
                 <GroupStandingsTable rows={standings} />
               ) : (
@@ -927,9 +1289,7 @@ export default function ChampionsLeaguePage() {
                       </div>
                     </div>
 
-                    <div style={{ fontWeight: 900, color: "var(--gnfc-muted)", fontSize: 16 }}>
-                      {isOpen ? "▲" : "▼"}
-                    </div>
+                    <div style={{ fontWeight: 900, color: "var(--gnfc-muted)", fontSize: 16 }}>{isOpen ? "▲" : "▼"}</div>
                   </button>
 
                   {isOpen && (

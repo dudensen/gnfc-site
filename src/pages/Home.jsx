@@ -1103,13 +1103,13 @@ export default function Home() {
       <div className="container">
         {/* Divisions always visible */}
         <div className="divisionGrid sideBySideDivisions">
-          <DivisionButton to="/division/A" title="Division A" subtitle="Οι 'Καλοί' μας — leagues A1, A2, A3…" />
+          <DivisionButton to="/division/A" title="Division A" subtitle="leagues A1, A2, A3, A4" />
           <DivisionButton
             to="/division/B"
             title="Division B"
-            subtitle="Οι 'Έλα μωρέ καλοί είμαστε αλλά δεν το παρακάνουμε κιόλλας' — leagues B1, B2, B3…"
+            subtitle="leagues B1, B2, B3, B4"
           />
-          <DivisionButton to="/division/Γ" title="Division Γ" subtitle="Οι 'Ωωωω τι ψαγμενιές ειναι αυτές ρε; Καλή φάση' — leagues Γ1, Γ2…" />
+          <DivisionButton to="/division/Γ" title="Division Γ" subtitle="leagues Γ1, Γ2, Γ3..." />
         </div>
 
         {/* ✅ Big boxes under divisions */}

@@ -765,11 +765,11 @@ function PastYearsCLBox({ years, year, setYear, loading, err, buckets }) {
   const order = ["Champion", "Final", "Semifinal", "8", "Groupstage"]
 
   const pillStyle = (rawKey) => {
-    const label = labelMap[rawKey] || rawKey
-    const isChampion = rawKey === "Champion"
-    const isRunnerUp = rawKey === "Final"
-    const isFinal8 = rawKey === "8"
+  const label = labelMap[rawKey] || rawKey
+  const isChampion = rawKey === "Champion"
 
+  // Champion = orange (special)
+  if (isChampion) {
     return {
       display: "inline-flex",
       alignItems: "center",
@@ -782,22 +782,28 @@ function PastYearsCLBox({ years, year, setYear, loading, err, buckets }) {
       letterSpacing: 0.25,
       whiteSpace: "nowrap",
       color: "var(--gnfc-muted)",
-      border: isChampion
-        ? "1px solid rgba(216,120,32,0.55)"
-        : isRunnerUp
-        ? "1px solid rgba(255,255,255,0.22)"
-        : isFinal8
-        ? "1px solid rgba(10,122,114,0.45)"
-        : "1px solid rgba(255,255,255,0.14)",
-      background: isChampion
-        ? "rgba(216,120,32,0.14)"
-        : isRunnerUp
-        ? "rgba(255,255,255,0.06)"
-        : isFinal8
-        ? "rgba(10,122,114,0.10)"
-        : "rgba(255,255,255,0.04)",
+      border: "1px solid rgba(216,120,32,0.55)",
+      background: "rgba(216,120,32,0.14)",
     }
   }
+
+  // Everyone else = same teal/green pill
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 22,
+    padding: "0 10px",
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 950,
+    letterSpacing: 0.25,
+    whiteSpace: "nowrap",
+    color: "var(--gnfc-muted)",
+    border: "1px solid rgba(10,122,114,0.45)",
+    background: "rgba(10,122,114,0.10)",
+  }
+}
 
   const headerRow = {
     display: "grid",

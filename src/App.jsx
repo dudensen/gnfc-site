@@ -7,6 +7,7 @@ import LeaguePage from "./pages/LeaguePage"
 import TeamPage from "./pages/TeamPage"
 import HistoryPage from "./pages/HistoryPage"
 import ChampionsLeaguePage from "./pages/ChampionsLeaguePage"
+import GnfcCupPage from "./pages/GnfcCupPage.jsx"
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
       <Route path="/history/:year" element={<HistoryPage />} />
       <Route path="/history" element={<HistoryPage />} />
       <Route path="/champions-league" element={<ChampionsLeaguePage />} />
+      <Route path="/cup" element={<GnfcCupPage />} />
       <Route path="*" element={<Home />} />
     </Routes>
   )

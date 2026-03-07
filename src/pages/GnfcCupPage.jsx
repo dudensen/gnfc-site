@@ -8,6 +8,21 @@ const SHEET_ID = "1Z8EbGi1rGDhg7dAQoPypJ2FTUQoMO730yx3Mm-cEMow"
 const CUP_GID = "784537326"
 const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${CUP_GID}`
 
+// Fixed columns (0-based indexes)
+const COL_MATCHUP_NO = 0 // A
+const COL_TEAM = 1 // B
+const COL_STATS_START = 2 // C
+const COL_STATS_END_EXCL = 12 // up to L (index 11)
+const COL_ROUND_TITLE = 3 // D
+const COL_LEAGUE = 14 // O
+
+// Group standings block: AL..AW
+const COL_GS_START = 37 // AL
+const COL_GS_END_EXCL = 49 // AW inclusive -> slice(37,49)
+const GROUP_HEADERS = ["Team", "Games", "Wins", "Loses", "Ties", "W%"]
+
+const LEAGUE_KEY = "League"
+
 /* ============================== tiny utils ============================== */
 
 function s(x) {
@@ -33,6 +48,24 @@ function teamHref(team) {
   const name = s(team)
   if (!name) return "#"
   return `/team/${encodeURIComponent(name)}`
+}
+function isWeekRoundTitle(v) {
+  return norm(v).includes("week")
+}
+function isLikelyHeaderWord(v) {
+  const t = norm(v)
+  return (
+    t === "team" ||
+    t === "teams" ||
+    t === "games" ||
+    t === "wins" ||
+    t === "losses" ||
+    t === "loses" ||
+    t === "ties" ||
+    t === "w%" ||
+    t === "pct" ||
+    t === "percentage"
+  )
 }
 
 // Robust CSV parser (quotes, commas, newlines)
@@ -202,21 +235,7 @@ function StatChip({ value, tone }) {
 
   // LOSER: no enclosure/frame
   if (!tone) {
-    return (
-      <span
-        style={{
-          display: "inline-block",
-          fontWeight: 900,
-          fontSize: 13,
-          color: ink,
-          padding: 0,
-          border: "none",
-          background: "transparent",
-        }}
-      >
-        {v}
-      </span>
-    )
+    return <span style={{ display: "inline-block", fontWeight: 900, fontSize: 13, color: ink }}>{v}</span>
   }
 
   const base = {
@@ -272,10 +291,8 @@ function MatchupCardCup({ matchup, statKeys, matchupNo, open, onToggle }) {
   const aName = cell(aTeam)
   const bName = cell(bTeam)
 
-  // GP only next to team names (same color for both)
-  const gpKey = Object.keys(matchup.a?.cols || {}).find((k) => norm(k) === "gp") || null
-  const aGP = gpKey ? s(matchup.a?.cols?.[gpKey]) : ""
-  const bGP = gpKey ? s(matchup.b?.cols?.[gpKey]) : ""
+  const aLeague = s(matchup.a?.cols?.[LEAGUE_KEY])
+  const bLeague = s(matchup.b?.cols?.[LEAGUE_KEY])
 
   const { w, l, t } = useMemo(() => scoreWLT(matchup.a?.cols, matchup.b?.cols, statKeys), [matchup, statKeys])
 
@@ -294,16 +311,16 @@ function MatchupCardCup({ matchup, statKeys, matchupNo, open, onToggle }) {
     whiteSpace: "nowrap",
   }
 
-  const teamRow = (team, gp) => (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "baseline",
-        gap: 8,
-        minWidth: 0,
-        flexWrap: "wrap",
-      }}
-    >
+  const leagueTag = {
+    fontSize: 11,
+    fontWeight: 900,
+    letterSpacing: 0.15,
+    color: muted, // same for both
+    whiteSpace: "nowrap",
+  }
+
+  const teamRow = (team, league) => (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0, flexWrap: "wrap" }}>
       <Link
         to={teamHref(team)}
         className="teamLinkHover"
@@ -318,36 +335,17 @@ function MatchupCardCup({ matchup, statKeys, matchupNo, open, onToggle }) {
           whiteSpace: "normal",
           wordBreak: "break-word",
         }}
-        onClick={(e) => e.stopPropagation()} // don't toggle accordion when clicking team link
+        onClick={(e) => e.stopPropagation()}
       >
         {cell(team)}
       </Link>
 
-      <span
-        style={{
-          fontSize: 11,
-          fontWeight: 900,
-          letterSpacing: 0.15,
-          color: muted,
-          whiteSpace: "nowrap",
-        }}
-      >
-        GP: {cell(gp)}
-      </span>
+      {league ? <span style={leagueTag}>{league}</span> : null}
     </div>
   )
 
   return (
-    <div
-      className="card"
-      style={{
-        padding: 0,
-        overflow: "hidden",
-        border: `1px solid ${border}`,
-        background: surface,
-      }}
-    >
-      {/* Accordion header (click to toggle) */}
+    <div className="card" style={{ padding: 0, overflow: "hidden", border: `1px solid ${border}`, background: surface }}>
       <div
         role="button"
         tabIndex={0}
@@ -358,22 +356,11 @@ function MatchupCardCup({ matchup, statKeys, matchupNo, open, onToggle }) {
             onToggle()
           }
         }}
-        style={{
-          cursor: "pointer",
-          padding: "10px 10px 8px",
-        }}
+        style={{ cursor: "pointer", padding: "10px 10px 8px" }}
         title={open ? "Click to collapse" : "Click to expand"}
       >
-        {/* Top row: Matchup title + pills (same row) */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-            marginBottom: 6,
-          }}
-        >
+        {/* Top row: title + pills */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
             <span style={matchTag}>Matchup {matchupNo}</span>
             <span style={{ color: muted, fontWeight: 950, fontSize: 12, lineHeight: 1 }}>{open ? "–" : "+"}</span>
@@ -386,24 +373,13 @@ function MatchupCardCup({ matchup, statKeys, matchupNo, open, onToggle }) {
           </div>
         </div>
 
-        {/* Teams get full width now */}
-        {teamRow(aTeam, aGP)}
-        <div
-          style={{
-            margin: "4px 0 4px",
-            color: orange,
-            fontWeight: 950,
-            letterSpacing: 0.35,
-            fontSize: 13, // bigger
-            lineHeight: 1,
-          }}
-        >
+        {teamRow(aTeam, aLeague)}
+        <div style={{ margin: "4px 0 4px", color: orange, fontWeight: 950, letterSpacing: 0.35, fontSize: 13, lineHeight: 1 }}>
           VS
         </div>
-        {teamRow(bTeam, bGP)}
+        {teamRow(bTeam, bLeague)}
       </div>
 
-      {/* Accordion body */}
       {open ? (
         <div style={{ borderTop: `1px solid ${border}` }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -421,7 +397,6 @@ function MatchupCardCup({ matchup, statKeys, matchupNo, open, onToggle }) {
                 const bVal = matchup.b?.cols?.[k]
                 const cmp = compareStat(aVal, bVal, k)
 
-                // winner gets colored chip, loser is plain, ties red for both
                 const aTone = cmp === 1 ? "a" : cmp === 0 ? "tie" : null
                 const bTone = cmp === -1 ? "b" : cmp === 0 ? "tie" : null
 
@@ -447,18 +422,43 @@ function MatchupCardCup({ matchup, statKeys, matchupNo, open, onToggle }) {
 
 /* ============================== page ============================== */
 
+function dedupeByTeam(rows) {
+  const seen = new Set()
+  const out = []
+  for (const r of rows) {
+    const key = norm(r.Team)
+    if (!key) continue
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(r)
+  }
+  return out
+}
+
 export default function GnfcCupPage() {
   const nav = useNavigate()
 
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState("")
-  const [rawStatKeys, setRawStatKeys] = useState([]) // C..L headers (row 2)
-  const [rounds, setRounds] = useState([]) // [{ roundTitle, matchups:[{ matchupNo, matchup:{a,b} }...] }]
+  const [rawStatKeys, setRawStatKeys] = useState([]) // headers from C..L
+  const [rounds, setRounds] = useState([])
   const [openRounds, setOpenRounds] = useState({})
   const [openCards, setOpenCards] = useState({})
 
-  // remove GP from category table (GP stays next to team names)
-  const statKeys = useMemo(() => rawStatKeys.filter((k) => norm(k) !== "gp"), [rawStatKeys])
+  const [groupRows, setGroupRows] = useState([]) // {Team, Games, Wins, Loses, Ties, "W%"}
+  const [podium, setPodium] = useState({ first: "", second: "" })
+
+  // C..L cats table keys (remove GP and remove "League" if it somehow exists there)
+  const statKeys = useMemo(
+    () =>
+      rawStatKeys.filter((k) => {
+        const nk = norm(k)
+        if (nk === "gp") return false
+        if (nk === norm(LEAGUE_KEY)) return false
+        return true
+      }),
+    [rawStatKeys]
+  )
 
   useEffect(() => {
     let alive = true
@@ -474,63 +474,163 @@ export default function GnfcCupPage() {
         const grid = parseCSV(text)
         if (!grid?.length) throw new Error("CSV is empty")
 
-        // Row 2 (index 1) headers
+        // Row 2 (index 1) headers for stats C..L (even if they are not perfect, we trust positions)
         const headerRow = grid[1] || []
-        // C..L => 2..11
-        const headersCL = headerRow.slice(2, 12).map(s).filter(Boolean)
+        const headersCL = headerRow.slice(COL_STATS_START, COL_STATS_END_EXCL).map(s).filter(Boolean)
         setRawStatKeys(headersCL)
 
+        // --- Parse matchups (with fallback if col A empty) ---
         let currentRound = ""
-        const roundMap = new Map() // roundTitle -> Map(matchupNo -> { matchupNo, teams:[] })
+        const roundMap = new Map() // roundTitle -> Map(matchKey -> { displayNo, order, teams:[] })
+
+        const autoCounterByRound = new Map()
+        const maxNumByRound = new Map()
+        const pendingTeamsByRound = new Map()
+
+        function ensureRound(roundKey) {
+          if (!roundMap.has(roundKey)) roundMap.set(roundKey, new Map())
+          if (!autoCounterByRound.has(roundKey)) autoCounterByRound.set(roundKey, 1)
+          if (!maxNumByRound.has(roundKey)) maxNumByRound.set(roundKey, 0)
+          if (!pendingTeamsByRound.has(roundKey)) pendingTeamsByRound.set(roundKey, [])
+        }
+
+        function flushPending(roundKey) {
+          const pend = pendingTeamsByRound.get(roundKey) || []
+          if (pend.length < 2) return
+          pendingTeamsByRound.set(roundKey, [])
+
+          for (let i = 0; i + 1 < pend.length; i += 2) {
+            const a = pend[i]
+            const b = pend[i + 1]
+
+            const maxNum = maxNumByRound.get(roundKey) || 0
+            const nextAuto = autoCounterByRound.get(roundKey) || 1
+            const displayNo = maxNum + nextAuto
+            autoCounterByRound.set(roundKey, nextAuto + 1)
+
+            const key = `auto_${displayNo}_${i}`
+            const mMap = roundMap.get(roundKey)
+            if (!mMap.has(key)) mMap.set(key, { displayNo, order: 100000 + displayNo, teams: [] })
+            mMap.get(key).teams.push(a, b)
+          }
+
+          if (pend.length % 2 === 1) {
+            pendingTeamsByRound.get(roundKey).push(pend[pend.length - 1])
+          }
+        }
+
+        // --- Parse group standings from AL..AW ---
+        const gs = []
 
         for (let i = 2; i < grid.length; i++) {
           const row = grid[i] || []
           if (isEmptyRow(row)) continue
 
-          const colA = s(row[0]) // matchup no
-          const colB = s(row[1]) // team
-          const colD = s(row[3]) // round title
+          const colA = s(row[COL_MATCHUP_NO])
+          const colB = s(row[COL_TEAM])
+          const colD = s(row[COL_ROUND_TITLE])
           const matchupNo = toNumLoose(colA)
 
-          // Round title row: D filled, but no matchup/team
-          if (colD && !colA && !colB) {
+          // Round title: col D contains "Week"
+          if (colD && isWeekRoundTitle(colD)) {
+            if (currentRound) flushPending(currentRound)
             currentRound = colD
-            if (!roundMap.has(currentRound)) roundMap.set(currentRound, new Map())
-            continue
+            ensureRound(currentRound)
+          } else {
+            const roundKey = currentRound || "Round"
+            ensureRound(roundKey)
+
+            // Build cols from C..L and add League from O
+            const statsCL = row.slice(COL_STATS_START, COL_STATS_END_EXCL)
+            const cols = {}
+            for (let j = 0; j < headersCL.length; j++) {
+              const key = s(headersCL[j])
+              if (!key) continue
+              cols[key] = statsCL[j]
+            }
+            cols[LEAGUE_KEY] = s(row[COL_LEAGUE])
+
+            // Primary: matchup numbers
+            if (matchupNo && colB) {
+              flushPending(roundKey)
+              maxNumByRound.set(roundKey, Math.max(maxNumByRound.get(roundKey) || 0, matchupNo))
+
+              const mMap = roundMap.get(roundKey)
+              const key = `num_${matchupNo}`
+              if (!mMap.has(key)) mMap.set(key, { displayNo: matchupNo, order: matchupNo, teams: [] })
+              mMap.get(key).teams.push({ team: colB, cols })
+            } else if (!matchupNo && colB) {
+              // Fallback: pair sequential team rows
+              pendingTeamsByRound.get(roundKey).push({ team: colB, cols })
+              if (pendingTeamsByRound.get(roundKey).length >= 2) flushPending(roundKey)
+            }
           }
 
-          if (!matchupNo || !colB) continue
-
-          const statsCL = row.slice(2, 12)
-
-          const cols = {}
-          for (let j = 0; j < headersCL.length; j++) {
-            const key = s(headersCL[j])
-            if (!key) continue
-            cols[key] = statsCL[j]
+          // Group standings row: read AL..AW first 6 fields as Team,Games,Wins,Loses,Ties,W%
+          const gsCells = row.slice(COL_GS_START, COL_GS_END_EXCL)
+          const team = s(gsCells?.[0])
+          if (team && !isLikelyHeaderWord(team)) {
+            const rec = {
+              Team: team,
+              Games: s(gsCells?.[1]),
+              Wins: s(gsCells?.[2]),
+              Loses: s(gsCells?.[3]),
+              Ties: s(gsCells?.[4]),
+              "W%": s(gsCells?.[5]),
+            }
+            // accept if it looks like a real row (at least one numeric-ish field present)
+            const hasAny =
+              s(rec.Games) || s(rec.Wins) || s(rec.Loses) || s(rec.Ties) || s(rec["W%"])
+            if (hasAny) gs.push(rec)
           }
-
-          const roundKey = currentRound || "Round"
-          if (!roundMap.has(roundKey)) roundMap.set(roundKey, new Map())
-          const mMap = roundMap.get(roundKey)
-
-          if (!mMap.has(matchupNo)) mMap.set(matchupNo, { matchupNo, teams: [] })
-          mMap.get(matchupNo).teams.push({ team: colB, cols })
         }
+
+        if (currentRound) flushPending(currentRound)
 
         const outRounds = Array.from(roundMap.entries()).map(([roundTitle, mMap]) => {
           const matchups = Array.from(mMap.values())
-            .sort((a, b) => a.matchupNo - b.matchupNo)
+            .sort((a, b) => a.order - b.order)
             .map((m) => ({
-              matchupNo: m.matchupNo,
+              matchupNo: m.displayNo,
               matchup: { a: m.teams?.[0] || null, b: m.teams?.[1] || null },
             }))
           return { roundTitle, matchups }
         })
 
+        // Podium: use last round's last matchup winner (by category W/L/T)
+        let first = ""
+        let second = ""
+        if (outRounds.length && statKeys.length) {
+          const lastRound = outRounds[outRounds.length - 1]
+          const lastMatch = lastRound?.matchups?.[lastRound.matchups.length - 1]
+          const a = lastMatch?.matchup?.a
+          const b = lastMatch?.matchup?.b
+          if (a?.team && b?.team) {
+            const { w, l } = scoreWLT(a?.cols, b?.cols, statKeys)
+            if (w > l) {
+              first = a.team
+              second = b.team
+            } else if (l > w) {
+              first = b.team
+              second = a.team
+            }
+          }
+        }
+
         if (!alive) return
         setRounds(outRounds)
         if (outRounds.length) setOpenRounds({ [outRounds[0].roundTitle]: true })
+
+        const deduped = dedupeByTeam(gs)
+        // sort by W% desc if possible, else leave as-is
+        deduped.sort((r1, r2) => {
+          const a = toNumLoose(String(r1["W%"]).replace("%", "")) ?? -999
+          const b = toNumLoose(String(r2["W%"]).replace("%", "")) ?? -999
+          return b - a
+        })
+        setGroupRows(deduped)
+
+        setPodium({ first, second })
       } catch (e) {
         if (!alive) return
         setErr(String(e?.message || e))
@@ -543,7 +643,7 @@ export default function GnfcCupPage() {
     return () => {
       alive = false
     }
-  }, [])
+  }, [statKeys.length]) // statKeys derived from headers; safe trigger
 
   function toggleRound(title) {
     setOpenRounds((prev) => ({ ...prev, [title]: !prev[title] }))
@@ -579,7 +679,7 @@ export default function GnfcCupPage() {
 
       {/* header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
-        <div style={{ fontSize: 32, fontWeight: 950, letterSpacing: 0.2, color: ink }}>GNFC CUP Matchups</div>
+        <div style={{ fontSize: 32, fontWeight: 950, letterSpacing: 0.2, color: ink }}>GNFC CUP</div>
 
         <div style={{ display: "flex", gap: 8 }}>
           <button type="button" className="badge" onClick={() => nav(-1)}>
@@ -591,20 +691,123 @@ export default function GnfcCupPage() {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
-        <a
-          href={CSV_URL}
-          target="_blank"
-          rel="noreferrer"
-          style={{ color: "var(--gnfc-green)", fontWeight: 900, textDecoration: "none" }}
-        >
-          Download CSV
-        </a>
-        <div style={{ marginTop: 6, color: muted, fontWeight: 800, fontSize: 13 }}>
-          CSV layout: Round titles in <b>Col D</b>, headers on <b>Row 2</b>, stats <b>C–L</b>. (Score col ignored)
+      {/* ====== TOP: Podium (left) + Group Standings (right) ====== */}
+      <div
+        style={{
+          display: "grid",
+          gap: 12,
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          marginBottom: 14,
+        }}
+      >
+        {/* Podium */}
+        {/* Podium */}
+<div className="card">
+  {/* header image */}
+  <div style={{ display: "grid", placeItems: "center", marginBottom: 10 }}>
+    <img
+      src="/gnfccup.jpg"
+      alt="GNFC CUP"
+      style={{
+        width: "100%",
+        height: "100%",
+        maxWidth: 360,
+        objectFit: "cover",
+        borderRadius: 14,
+        border: `1px solid ${border}`,
+        background: "rgba(0,0,0,0.02)",
+      }}
+    />
+    <div style={{ marginTop: 8, fontWeight: 950, letterSpacing: 0.6, color: ink }}>
+      GNFC CUP
+    </div>
+  </div>
+
+  <div style={{ fontWeight: 950, fontSize: 16, color: ink, marginBottom: 8 }}>Final Podium</div>
+
+  <div style={{ display: "grid", gap: 8 }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        border: `1px solid ${border}`,
+        borderRadius: 14,
+        padding: "10px 12px",
+        background: "rgba(219, 125, 18, 0.10)",
+      }}
+    >
+      <div style={{ fontWeight: 950, color: ink }}>1st</div>
+      <div style={{ fontWeight: 950, color: ink }}>{podium.first || "—"}</div>
+    </div>
+
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        border: `1px solid ${border}`,
+        borderRadius: 14,
+        padding: "10px 12px",
+        background: "rgba(5, 97, 97, 0.08)",
+      }}
+    >
+      <div style={{ fontWeight: 950, color: ink }}>2nd</div>
+      <div style={{ fontWeight: 950, color: ink }}>{podium.second || "—"}</div>
+    </div>
+  </div>
+
+  <div style={{ marginTop: 8, color: muted, fontSize: 12, fontWeight: 800 }}>
+    Calculated from the last matchup of the last round (by category wins).
+  </div>
+</div>
+
+        {/* Group standings */}
+        <div className="card" style={{ overflow: "hidden" }}>
+          <div style={{ fontWeight: 950, fontSize: 16, color: ink, marginBottom: 8 }}>Group Standings</div>
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 520 }}>
+              <thead>
+                <tr>
+                  {GROUP_HEADERS.map((h) => (
+                    <th key={h} style={thStyle}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody>
+                {(groupRows || []).slice(0, 50).map((r, idx) => (
+                  <tr key={`${r.Team}-${idx}`} style={rowStyle(idx)}>
+                    <td style={{ ...tdStyle, fontWeight: 950 }}>{r.Team}</td>
+                    <td style={tdStyle}>{cell(r.Games)}</td>
+                    <td style={tdStyle}>{cell(r.Wins)}</td>
+                    <td style={tdStyle}>{cell(r.Loses)}</td>
+                    <td style={tdStyle}>{cell(r.Ties)}</td>
+                    <td style={tdStyle}>{cell(r["W%"])}</td>
+                  </tr>
+                ))}
+
+                {!groupRows?.length ? (
+                  <tr>
+                    <td colSpan={6} style={{ ...tdStyle, color: muted, fontWeight: 900 }}>
+                      No standings found in columns AL–AW.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: 8, color: muted, fontSize: 12, fontWeight: 800 }}>
+            Read from columns <b>AL–AW</b> (headers are overridden to Team/Games/Wins/Loses/Ties/W%).
+          </div>
         </div>
       </div>
 
+      {/* ====== BODY ====== */}
       {loading ? (
         <div className="card">Loading…</div>
       ) : err ? (

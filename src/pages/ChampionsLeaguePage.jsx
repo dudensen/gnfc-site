@@ -8,9 +8,6 @@ import { RANKING_SHEET_ID, RANKING_GIDS } from "../config/rankingGids"
 const SHEET_ID = "1Z8EbGi1rGDhg7dAQoPypJ2FTUQoMO730yx3Mm-cEMow"
 const CHAMPIONS_GID = "2012947819"
 
-const ORANGE = "#f97316"
-const HASH_COLOR = "#0a7a72"
-
 /* ----------------------------- tiny utils ----------------------------- */
 
 function s(x) {
@@ -30,6 +27,12 @@ function hasLetters(x) {
   return /[A-Za-zΑ-Ωα-ω]/.test(s(x))
 }
 
+/** ✅ REAL CSV export url (better for “Week …” markers / merged cells) */
+function exportCsvUrl(sheetId, gid) {
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`
+}
+
+/** fallback gviz (kept as backup) */
 function gvizCsvUrl(sheetId, gid) {
   const tq = encodeURIComponent("select *")
   return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?gid=${gid}&tqx=out:csv&tq=${tq}`
@@ -183,13 +186,32 @@ function isNumericMatchupNo(x) {
   return /^\d+$/.test(s(x))
 }
 
+/**
+ * ✅ Updated: get section titles from Column D (index 3) when it contains "Week".
+ * Uses REAL export CSV (see fetch), with a safe fallback to old behavior if no Week titles exist.
+ */
 function parseChampionsBySections(csvRows) {
   if (!csvRows?.length) throw new Error("Champions League CSV is empty.")
   if (csvRows.length < 2) throw new Error("Champions League CSV missing data rows.")
 
-  const headerRow = csvRows[0] || []
-  const headersBO = sliceBO(headerRow).map((h) => s(h))
+  // 1) Find the real header row (export CSV can have junk rows before headers)
+  function findHeaderIdx(rows, maxScan = 40) {
+    const lim = Math.min(rows.length, maxScan)
+    for (let i = 0; i < lim; i++) {
+      const r = rows[i] || []
+      const bo = sliceBO(r).map(s)
+      const hasTeam = bo.some((x) => norm(x) === "team")
+      const hasAnyStat = bo.some((x) => ["fg%", "ft%", "fg", "ft", "3pt", "reb", "ast", "stl", "blk", "to", "pts", "gp", "score"].includes(norm(x)))
+      if (hasTeam && (hasAnyStat || bo.filter(Boolean).length >= 6)) return i
+    }
+    return 0
+  }
 
+  const headerIdx = findHeaderIdx(csvRows, 40)
+  const headerRow = csvRows[headerIdx] || []
+
+  // Build column defs from B..O headers (same as before)
+  const headersBO = sliceBO(headerRow).map((h) => s(h))
   const colDefs = []
   for (let c = 0; c < headersBO.length; c++) {
     const label = headersBO[c]
@@ -198,95 +220,95 @@ function parseChampionsBySections(csvRows) {
   }
 
   const idxTeamBO = colDefs.find((d) => norm(d.key) === "team")?.idxBO ?? null
+  if (idxTeamBO == null) throw new Error("Could not locate Team column in Champions League headers.")
 
-  const playoffLabels = ["PLAYOFFS — ROUND 1", "PLAYOFFS — ROUND 2", "SEMIFINALS", "FINALS"]
-  const sections = []
-  let current = { title: "MATCHDAY 1", matchups: [] }
-  let matchdayCount = 1
-  let playoffCount = 0
+  const isWeekTitle = (row) => /week/i.test(s(row?.[3])) // Column D (index 3)
 
-  const flush = () => {
-    if (current && current.matchups.length) sections.push(current)
+  const readTeamAndRec = (row) => {
+    const bo = sliceBO(row)
+    const team = s(bo[idxTeamBO])
+    if (!hasLetters(team)) return null
+
+    const rec = {}
+    for (const d of colDefs) rec[d.key] = s(bo[d.idxBO])
+    return { team, cols: rec, bo }
   }
 
-  let seenAny = false
+  // 2) Build sections by Week titles and team rows between them
+  const sections = []
+  let current = null
+  let teamsBuffer = [] // holds {team, cols, bo} until paired
 
-  for (let i = 1; i < csvRows.length; ) {
+  const flushBufferIntoMatchups = (sec, limitToOneMatch = false) => {
+    if (!sec) return
+    const ms = sec.matchups || []
+
+    // pair sequentially
+    let mNo = ms.length + 1
+    for (let i = 0; i + 1 < teamsBuffer.length; i += 2) {
+      if (limitToOneMatch && ms.length >= 1) break
+      const a = teamsBuffer[i]
+      const b = teamsBuffer[i + 1]
+      ms.push({
+        matchupNo: String(mNo++), // synthetic but stable per section
+        a,
+        b,
+      })
+      if (limitToOneMatch) break
+    }
+
+    sec.matchups = ms
+    teamsBuffer = []
+  }
+
+  // helper to detect final round title
+  const isFinalTitle = (title) => /final/i.test(s(title))
+
+  // scan rows after headers
+  for (let i = headerIdx + 1; i < csvRows.length; i++) {
     const row = csvRows[i] || []
 
-    if (isEmptyRowMatchday(row)) {
-      flush()
-      if (matchdayCount < 7) {
-        matchdayCount += 1
-        current = { title: `MATCHDAY ${matchdayCount}`, matchups: [] }
-      } else {
-        const lab = playoffLabels[playoffCount] || `PLAYOFFS — ROUND ${playoffCount + 1}`
-        playoffCount += 1
-        current = { title: lab, matchups: [] }
+    // New round title?
+    if (isWeekTitle(row)) {
+      const title = s(row?.[3])
+
+      // flush previous section buffer before starting new
+      if (current) {
+        // if the previous section was final, enforce 1 match
+        flushBufferIntoMatchups(current, isFinalTitle(current.title))
+        if (current.matchups.length) sections.push(current)
       }
-      i += 1
+
+      current = { title, matchups: [] }
+      teamsBuffer = []
       continue
     }
 
-    const a = s(row[0])
+    // If we haven't hit the first Week title yet, ignore rows
+    if (!current) continue
 
-    if (isNumericMatchupNo(a) && a === "1" && seenAny && current.matchups.length) {
-      flush()
-      if (matchdayCount < 7) {
-        matchdayCount += 1
-        current = { title: `MATCHDAY ${matchdayCount}`, matchups: [] }
-      } else {
-        const lab = playoffLabels[playoffCount] || `PLAYOFFS — ROUND ${playoffCount + 1}`
-        playoffCount += 1
-        current = { title: lab, matchups: [] }
-      }
-      continue
-    }
-
-    if (!isNumericMatchupNo(a)) {
-      i += 1
-      continue
-    }
-
-    const row2 = csvRows[i + 1] || []
-    const b = s(row2?.[0])
-
-    if (!isNumericMatchupNo(b) || b !== a) {
-      i += 1
-      continue
-    }
-
-    const bo1 = sliceBO(row)
-    const bo2 = sliceBO(row2)
-
-    const team1 = idxTeamBO != null ? s(bo1[idxTeamBO]) : ""
-    const team2 = idxTeamBO != null ? s(bo2[idxTeamBO]) : ""
-
-    const rec1 = {}
-    const rec2 = {}
-    for (const d of colDefs) {
-      rec1[d.key] = s(bo1[d.idxBO])
-      rec2[d.key] = s(bo2[d.idxBO])
-    }
-
-    if (idxTeamBO != null) {
-      if (!hasLetters(team1) || !hasLetters(team2)) {
-        i += 2
-        continue
-      }
-    }
-
-    current.matchups.push({
-      matchupNo: a,
-      a: { team: team1, cols: rec1, bo: bo1 }, // ✅ keep raw B..O
-      b: { team: team2, cols: rec2, bo: bo2 }, // ✅ keep raw B..O
-    })
-
-    seenAny = true
-    i += 2
+    // Collect team rows between titles
+    const rec = readTeamAndRec(row)
+    if (rec) teamsBuffer.push(rec)
   }
 
-  flush()
+  // flush last section
+  if (current) {
+    // ✅ if last section is final OR just treat last as final-safe when it’s the end:
+    // user said: "there is always ONE match under the final round"
+    // We'll enforce ONE match if title contains "final", otherwise keep normal pairing.
+    flushBufferIntoMatchups(current, isFinalTitle(current.title))
+    if (current.matchups.length) sections.push(current)
+  }
+
+  // Extra enforcement: if the LAST section is the final round but somehow has >1 matchup, keep only the first
+  if (sections.length) {
+    const last = sections[sections.length - 1]
+    if (isFinalTitle(last.title) && last.matchups.length > 1) {
+      last.matchups = [last.matchups[0]]
+    }
+  }
+
   return { colDefs, sections }
 }
 
@@ -298,6 +320,7 @@ function pickFinalPodium(parsed) {
 
   // Prefer FINALS section if it exists
   const finalsSec = [...parsed.sections].reverse().find((sec) => /final/i.test(sec.title)) || null
+
   const sectionsToScan = finalsSec ? [finalsSec] : [...parsed.sections].reverse()
 
   // "The last 1 1 matchup that does not have a 2 2 below is the final."
@@ -331,6 +354,7 @@ function pickFinalPodium(parsed) {
     finalMatch = findFinalMatchupInSection(sec)
     if (finalMatch) break
   }
+
   if (!finalMatch) return null
 
   const aW = s(finalMatch?.a?.bo?.[IDX_IN_BO_N]).toUpperCase() === "W"
@@ -343,6 +367,7 @@ function pickFinalPodium(parsed) {
   const runnerUp = aW ? finalMatch.b?.team : finalMatch.a?.team
 
   if (!hasLetters(winner) || !hasLetters(runnerUp)) return null
+
   return { winner, runnerUp }
 }
 
@@ -501,22 +526,36 @@ const rowStyle = (idx) => ({
 })
 
 function MatchupCardCL({ matchup, statKeys, leagueKey }) {
+  const [open, setOpen] = useState(false)
+
   const aTeam = matchup.a?.team
   const bTeam = matchup.b?.team
-
-  const aName = cell(aTeam)
-  const bName = cell(bTeam)
 
   const aLeague = leagueKey ? s(matchup.a?.cols?.[leagueKey]) : ""
   const bLeague = leagueKey ? s(matchup.b?.cols?.[leagueKey]) : ""
 
-  const gpKey = Object.keys(matchup.a?.cols || {}).find((k) => norm(k) === "gp") || null
-  const aGP = gpKey ? s(matchup.a?.cols?.[gpKey]) : ""
-  const bGP = gpKey ? s(matchup.b?.cols?.[gpKey]) : ""
+  const { w, l, t } = useMemo(
+    () => scoreWLT(matchup.a?.cols, matchup.b?.cols, statKeys),
+    [matchup, statKeys]
+  )
 
-  const { w, l, t } = useMemo(() => scoreWLT(matchup.a?.cols, matchup.b?.cols, statKeys), [matchup, statKeys])
+  const headerBtn = {
+    width: "100%",
+    textAlign: "left",
+    padding: "10px 12px",
+    border: "none",
+    background: "transparent",
+    cursor: "pointer",
+  }
 
-  const leagueTag = {
+  const topRow = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+  }
+
+  const leaguePill = {
     display: "inline-flex",
     alignItems: "center",
     height: 18,
@@ -524,8 +563,8 @@ function MatchupCardCL({ matchup, statKeys, leagueKey }) {
     marginLeft: 8,
     borderRadius: 999,
     fontSize: 11,
-    fontWeight: 900,
-    letterSpacing: 0.3,
+    fontWeight: 950,
+    letterSpacing: 0.2,
     color: "var(--gnfc-muted)",
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(255,255,255,0.06)",
@@ -535,81 +574,89 @@ function MatchupCardCL({ matchup, statKeys, leagueKey }) {
     whiteSpace: "nowrap",
   }
 
-  const gpTag = {
-    marginLeft: 8,
-    fontSize: 11,
-    fontWeight: 900,
-    letterSpacing: 0.2,
-    color: "var(--gnfc-muted)",
-    whiteSpace: "nowrap",
-  }
-
-  const teamLine = (team, league, gp) => (
+  const teamLine = (team, league) => (
     <div style={{ fontWeight: 950, fontSize: 15, lineHeight: 1.15 }}>
       <Link to={teamHref(team)} className="teamLinkHover" style={{ textDecoration: "none", color: "inherit" }}>
         {cell(team)}
       </Link>
-      {league ? <span style={leagueTag}>{league}</span> : null}
-      <span style={gpTag}>GP: {cell(gp)}</span>
+      {league ? <span style={leaguePill}>{league}</span> : null}
     </div>
   )
 
-  return (
-    <div className="card" style={{ padding: 0, overflow: "visible" }}>
-      <div style={matchupHeader}>
-        <div style={{ minWidth: 0 }}>
-          {teamLine(aTeam, aLeague, aGP)}
-          <div style={{ margin: "6px 0", color: "#db7d12", fontWeight: 900, letterSpacing: 0.4 }}>vs</div>
-          {teamLine(bTeam, bLeague, bGP)}
-        </div>
+  const vsBlock = {
+    margin: "6px 0 5px",
+    color: "#db7d12",
+    fontWeight: 1000,
+    letterSpacing: 0.8,
+    fontSize: 16,
+    lineHeight: 1,
+  }
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      {/* ✅ Accordion Header */}
+      <button type="button" onClick={() => setOpen((v) => !v)} style={headerBtn} aria-expanded={open}>
+        {/* Row 1: only W/L/T on the right */}
+        <div style={topRow}>
           <ScorePill label="W" value={w} tone="win" />
           <ScorePill label="L" value={l} tone="loss" />
           <ScorePill label="T" value={t} tone="tie" />
+          <span style={{ fontWeight: 900, color: "var(--gnfc-muted)", marginLeft: 2 }}>{open ? "▲" : "▼"}</span>
         </div>
-      </div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ background: "rgba(0,0,0,0.18)" }}>
-            <th style={thStyle}>Cat</th>
-            <th style={{ ...thStyle, textAlign: "center" }}>{aName}</th>
-            <th style={{ ...thStyle, textAlign: "center" }}>{bName}</th>
-          </tr>
-        </thead>
+        {/* Row 2: full-width matchup title */}
+        <div style={{ marginTop: 10 }}>
+          {teamLine(aTeam, aLeague)}
+          <div style={vsBlock}>VS</div>
+          {teamLine(bTeam, bLeague)}
+        </div>
+      </button>
 
-        <tbody>
-          {statKeys.map((k, idx) => {
-            const aVal = matchup.a?.cols?.[k]
-            const bVal = matchup.b?.cols?.[k]
-            const cmp = compareStat(aVal, bVal, k)
-
-            const aTone = cmp === 1 ? "a" : cmp === 0 ? "tie" : null
-            const bTone = cmp === -1 ? "b" : cmp === 0 ? "tie" : null
-
-            return (
-              <tr key={k} style={rowStyle(idx)}>
-                <td style={{ ...tdStyle, fontWeight: 900 }}>{k}</td>
-                <td style={{ ...tdStyle, textAlign: "center" }}>
-                  <StatChip value={aVal} tone={aTone} />
-                </td>
-                <td style={{ ...tdStyle, textAlign: "center" }}>
-                  <StatChip value={bVal} tone={bTone} />
-                </td>
+      {/* ✅ Expanded stats */}
+      {open && (
+        <div style={{ padding: "0 12px 12px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "rgba(0,0,0,0.18)" }}>
+                <th style={thStyle}>Cat</th>
+                <th style={{ ...thStyle, textAlign: "center" }}>{cell(aTeam)}</th>
+                <th style={{ ...thStyle, textAlign: "center" }}>{cell(bTeam)}</th>
               </tr>
-            )
-          })}
-        </tbody>
-      </table>
+            </thead>
+
+            <tbody>
+              {statKeys.map((k, idx) => {
+                const aVal = matchup.a?.cols?.[k]
+                const bVal = matchup.b?.cols?.[k]
+                const cmp = compareStat(aVal, bVal, k)
+
+                const aTone = cmp === 1 ? "a" : cmp === 0 ? "tie" : null
+                const bTone = cmp === -1 ? "b" : cmp === 0 ? "tie" : null
+
+                return (
+                  <tr key={k} style={rowStyle(idx)}>
+                    <td style={{ ...tdStyle, fontWeight: 900 }}>{k}</td>
+                    <td style={{ ...tdStyle, textAlign: "center" }}>
+                      <StatChip value={aVal} tone={aTone} />
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: "center" }}>
+                      <StatChip value={bVal} tone={bTone} />
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
 
 /* ----------------------------- Past Years (Champions League column) ----------------------------- */
 
-function headerFp(x) {
-  return norm(x).replace(/[^a-z0-9α-ω]/g, "")
+function headerFingerprint(h) {
+  return norm(h).replace(/[^a-z0-9α-ω]/g, "")
 }
 
 function findHeaderRow(rows, maxScan = 12) {
@@ -621,7 +668,7 @@ function findHeaderRow(rows, maxScan = 12) {
     let score = 0
 
     for (let c = 0; c < row.length; c++) {
-      const fp = headerFp(row[c])
+      const fp = headerFingerprint(row[c])
       if (!fp) continue
       if (fp === "team" || fp.includes("team")) score += 3
       if (fp === "playoffs" || fp.includes("playoffs")) score += 2
@@ -643,7 +690,6 @@ function findColIndex(headerRow, predicate) {
 }
 
 function findColIndexJoined(headerRow, predicateJoined, maxSpan = 3) {
-  // try joining header cells i..i+span-1 (handles split/merged headers)
   for (let i = 0; i < headerRow.length; i++) {
     let acc = ""
     for (let span = 1; span <= maxSpan && i + span - 1 < headerRow.length; span++) {
@@ -658,49 +704,50 @@ function findColIndexJoined(headerRow, predicateJoined, maxSpan = 3) {
 function parsePastChampionsLeagueResults(csvRows) {
   if (!Array.isArray(csvRows) || csvRows.length < 2) return null
 
-  // ✅ detect real header row (often NOT row 0)
   const hdrIdx = findHeaderRow(csvRows, 12)
   const header = csvRows[hdrIdx] || []
   const dataStart = hdrIdx + 1
 
-  // TEAM column
   let idxTeam = findColIndex(header, (h) => {
-    const fp = headerFp(h)
+    const fp = headerFingerprint(h)
     return fp === "team" || fp.includes("team")
   })
 
-  // CHAMPIONS LEAGUE column
-  let idxCL = findColIndex(header, (h) => headerFp(h) === "championsleague")
+  let idxCL = findColIndex(header, (h) => headerFingerprint(h) === "championsleague")
   if (idxCL < 0) {
     idxCL = findColIndex(header, (h) => {
-      const fp = headerFp(h)
+      const fp = headerFingerprint(h)
       return fp.includes("champ") && fp.includes("league")
     })
   }
-
-  // ✅ try joined headers (split across 2-3 cells)
   if (idxCL < 0) {
-    idxCL = findColIndexJoined(header, (joined) => {
-      const fp = headerFp(joined)
-      return fp === "championsleague" || (fp.includes("champ") && fp.includes("league"))
-    }, 3)
+    idxCL = findColIndexJoined(
+      header,
+      (joined) => {
+        const fp = headerFingerprint(joined)
+        return fp === "championsleague" || (fp.includes("champ") && fp.includes("league"))
+      },
+      3
+    )
   }
 
-  // ✅ fallback: column right after Playoffs (also allow joined for playoffs)
+  // fallback: after Playoffs
   if (idxCL < 0) {
     let idxPlayoffs = findColIndex(header, (h) => {
-      const fp = headerFp(h)
+      const fp = headerFingerprint(h)
       return fp === "playoffs" || fp.includes("playoffs")
     })
     if (idxPlayoffs < 0) {
-      idxPlayoffs = findColIndexJoined(header, (joined) => {
-        const fp = headerFp(joined)
-        return fp === "playoffs" || fp.includes("playoffs")
-      }, 3)
+      idxPlayoffs = findColIndexJoined(
+        header,
+        (joined) => {
+          const fp = headerFingerprint(joined)
+          return fp === "playoffs" || fp.includes("playoffs")
+        },
+        3
+      )
     }
-    if (idxPlayoffs >= 0 && idxPlayoffs + 1 < header.length) {
-      idxCL = idxPlayoffs + 1
-    }
+    if (idxPlayoffs >= 0 && idxPlayoffs + 1 < header.length) idxCL = idxPlayoffs + 1
   }
 
   if (idxTeam < 0 || idxCL < 0) return null
@@ -714,10 +761,10 @@ function parsePastChampionsLeagueResults(csvRows) {
   }
 
   let emptyStreak = 0
-  for (let r = dataStart; r < csvRows.length; r++) {
-    const row = csvRows[r] || []
-    const team = s(row[idxTeam])
-    const valRaw = s(row[idxCL])
+  for (let i = dataStart; i < csvRows.length; i++) {
+    const r = csvRows[i] || []
+    const team = s(r[idxTeam])
+    const valRaw = s(r[idxCL])
 
     const looksEmpty = !team && !valRaw
     if (looksEmpty) {
@@ -730,11 +777,10 @@ function parsePastChampionsLeagueResults(csvRows) {
     if (!hasLetters(team) || !valRaw) continue
 
     const v = norm(valRaw)
-
     if (v === "champion") buckets.Champion.push(team)
     else if (v === "final") buckets.Final.push(team)
     else if (v === "semifinal" || v === "semifinals") buckets.Semifinal.push(team)
-    else if (v === "8" || v === "8th" || v === "8thplace") buckets["8"].push(team)
+    else if (v === "8") buckets["8"].push(team)
     else if (v === "groupstage" || v === "group stage" || v === "group-stage") buckets.Groupstage.push(team)
   }
 
@@ -765,11 +811,24 @@ function PastYearsCLBox({ years, year, setYear, loading, err, buckets }) {
   const order = ["Champion", "Final", "Semifinal", "8", "Groupstage"]
 
   const pillStyle = (rawKey) => {
-  const label = labelMap[rawKey] || rawKey
-  const isChampion = rawKey === "Champion"
-
-  // Champion = orange (special)
-  if (isChampion) {
+    const isChampion = rawKey === "Champion"
+    if (isChampion) {
+      return {
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: 22,
+        padding: "0 10px",
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 950,
+        letterSpacing: 0.25,
+        whiteSpace: "nowrap",
+        color: "var(--gnfc-muted)",
+        border: "1px solid rgba(216,120,32,0.55)",
+        background: "rgba(216,120,32,0.14)",
+      }
+    }
     return {
       display: "inline-flex",
       alignItems: "center",
@@ -782,28 +841,10 @@ function PastYearsCLBox({ years, year, setYear, loading, err, buckets }) {
       letterSpacing: 0.25,
       whiteSpace: "nowrap",
       color: "var(--gnfc-muted)",
-      border: "1px solid rgba(216,120,32,0.55)",
-      background: "rgba(216,120,32,0.14)",
+      border: "1px solid rgba(10,122,114,0.45)",
+      background: "rgba(10,122,114,0.10)",
     }
   }
-
-  // Everyone else = same teal/green pill
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    height: 22,
-    padding: "0 10px",
-    borderRadius: 999,
-    fontSize: 11,
-    fontWeight: 950,
-    letterSpacing: 0.25,
-    whiteSpace: "nowrap",
-    color: "var(--gnfc-muted)",
-    border: "1px solid rgba(10,122,114,0.45)",
-    background: "rgba(10,122,114,0.10)",
-  }
-}
 
   const headerRow = {
     display: "grid",
@@ -918,15 +959,7 @@ function PastYearsCLBox({ years, year, setYear, loading, err, buckets }) {
 
 /* ----------------------------- podium + standings UI ----------------------------- */
 
-function Podium({
-  podium,
-  pastYears,
-  pastYear,
-  setPastYear,
-  pastLoading,
-  pastErr,
-  pastBuckets,
-}) {
+function Podium({ podium, pastYears, pastYear, setPastYear, pastLoading, pastErr, pastBuckets }) {
   const winner = podium?.winner || ""
   const runnerUp = podium?.runnerUp || ""
 
@@ -951,7 +984,6 @@ function Podium({
         </div>
       ) : (
         <>
-          {/* Winner */}
           <div
             style={{
               padding: "10px 12px",
@@ -970,7 +1002,6 @@ function Podium({
 
           <div style={{ height: 10 }} />
 
-          {/* Runner-up */}
           <div
             style={{
               padding: "10px 12px",
@@ -981,7 +1012,11 @@ function Podium({
           >
             <div style={{ fontSize: 12, color: "var(--gnfc-muted)", fontWeight: 900, letterSpacing: 0.4 }}>RUNNER-UP</div>
             <div style={{ marginTop: 4, fontSize: 15, fontWeight: 950, lineHeight: 1.15 }}>
-              <Link to={teamHref(runnerUp)} className="teamLinkHover" style={{ textDecoration: "none", color: "inherit" }}>
+              <Link
+                to={teamHref(runnerUp)}
+                className="teamLinkHover"
+                style={{ textDecoration: "none", color: "inherit" }}
+              >
                 {cell(runnerUp)}
               </Link>
             </div>
@@ -993,16 +1028,8 @@ function Podium({
         Source: FINAL result (winner row has “W” in column N).
       </div>
 
-      {/* ✅ Past years dropdown under podium */}
       {pastYears?.length ? (
-        <PastYearsCLBox
-          years={pastYears}
-          year={pastYear}
-          setYear={setPastYear}
-          loading={pastLoading}
-          err={pastErr}
-          buckets={pastBuckets}
-        />
+        <PastYearsCLBox years={pastYears} year={pastYear} setYear={setPastYear} loading={pastLoading} err={pastErr} buckets={pastBuckets} />
       ) : null}
     </div>
   )
@@ -1095,7 +1122,7 @@ export default function ChampionsLeaguePage() {
   const [standings, setStandings] = useState([])
   const [openSection, setOpenSection] = useState(null)
 
-  // ✅ past years state
+  // past years
   const pastYears = useMemo(() => {
     return Object.keys(RANKING_GIDS || {})
       .filter((k) => /^\d{4}$/.test(k))
@@ -1113,9 +1140,17 @@ export default function ChampionsLeaguePage() {
       try {
         setLoading(true)
         setErr("")
-        const res = await fetch(gvizCsvUrl(SHEET_ID, CHAMPIONS_GID))
-        const text = await res.text()
-        if (!res.ok) throw new Error(`Champions League fetch failed: ${res.status} ${res.statusText}`)
+
+        // ✅ Use CSV export (and fallback to gviz if needed)
+        const url = exportCsvUrl(SHEET_ID, CHAMPIONS_GID)
+        let res = await fetch(url)
+        let text = await res.text()
+
+        if (!res.ok) {
+          res = await fetch(gvizCsvUrl(SHEET_ID, CHAMPIONS_GID))
+          text = await res.text()
+          if (!res.ok) throw new Error(`Champions League fetch failed: ${res.status} ${res.statusText}`)
+        }
 
         const rows = parseCsv(text)
 
@@ -1141,7 +1176,7 @@ export default function ChampionsLeaguePage() {
     setOpenSection((prev) => (prev == null ? parsed.sections[0].title : prev))
   }, [parsed])
 
-  // ✅ fetch past-year CL results from ranking sheet
+  // fetch past-year CL results from ranking sheet (export CSV)
   useEffect(() => {
     if (!pastYear) return
     const gid = RANKING_GIDS?.[pastYear]
@@ -1158,9 +1193,14 @@ export default function ChampionsLeaguePage() {
         setPastErr("")
         setPastBuckets(null)
 
-        const res = await fetch(gvizCsvUrl(RANKING_SHEET_ID, gid))
-        const text = await res.text()
-        if (!res.ok) throw new Error(`Year ${pastYear} fetch failed: ${res.status} ${res.statusText}`)
+        let res = await fetch(exportCsvUrl(RANKING_SHEET_ID, gid))
+        let text = await res.text()
+
+        if (!res.ok) {
+          res = await fetch(gvizCsvUrl(RANKING_SHEET_ID, gid))
+          text = await res.text()
+          if (!res.ok) throw new Error(`Year ${pastYear} fetch failed: ${res.status} ${res.statusText}`)
+        }
 
         const rows = parseCsv(text)
         const buckets = parsePastChampionsLeagueResults(rows)
@@ -1249,7 +1289,6 @@ export default function ChampionsLeaguePage() {
                 pastErr={pastErr}
                 pastBuckets={pastBuckets}
               />
-
               {standings?.length ? (
                 <GroupStandingsTable rows={standings} />
               ) : (

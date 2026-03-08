@@ -8,6 +8,7 @@ import TeamPage from "./pages/TeamPage"
 import HistoryPage from "./pages/HistoryPage"
 import ChampionsLeaguePage from "./pages/ChampionsLeaguePage"
 import GnfcCupPage from "./pages/GnfcCupPage.jsx"
+import ChampionsRacePage from "./pages/ChampionsRacePage.jsx"
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
       <Route path="/history" element={<HistoryPage />} />
       <Route path="/champions-league" element={<ChampionsLeaguePage />} />
       <Route path="/cup" element={<GnfcCupPage />} />
+      <Route path="/championsrace" element={<ChampionsRacePage />} />
       <Route path="*" element={<Home />} />
     </Routes>
   )

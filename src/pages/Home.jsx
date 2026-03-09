@@ -1143,6 +1143,11 @@ export default function Home() {
           title="History"
           subtitle="Trophies • Placements • Past Seasons & Records"
         />
+        <BigNavCard
+          to="/rivalries"
+          title="Rivalries"
+          subtitle="Historic head-to-head matchups"
+        />
       </div>
 
         {/* Tabs below (only groups/general now) */}
@@ -1188,7 +1193,7 @@ export default function Home() {
 
                   .sideBySideExtras{
                     display: grid;
-                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    grid-template-columns: repeat(4, minmax(0, 1fr));
                     gap: 14px;
                   }
 
@@ -1238,7 +1243,7 @@ export default function Home() {
                   }
                   .sideBySideExtras{
                     display: grid;
-                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    grid-template-columns: repeat(4, minmax(0, 1fr));
                     gap: 14px;
                   }
 

@@ -1113,9 +1113,28 @@ export default function Home() {
         </div>
 
         {/* ✅ Big boxes under divisions */}
+        {/* ✅ Big boxes under divisions */}
         <div className="divisionGrid sideBySideExtras" style={{ marginTop: 14 }}>
-          <BigNavCard to="/champions-league" title="Champions League" subtitle="Matchups • Winner/Runner-up • Group Standings" />
-          <BigNavCard to="/history" title="History" subtitle="Trophies • Placements • Past Seasons & Records" />
+          <BigNavCard
+            to="/champions-league"
+            title="Champions League"
+            subtitle="Matchups • Winners • Standings • History"
+          />
+          <BigNavCard
+            to="/cup"
+            title="GNFC Cup"
+            subtitle="Cup bracket • Matchups • Podium"
+          />
+          <BigNavCard
+            to="/championsrace"
+            title="Champions Race"
+            subtitle="Standings • Matchups • Race overview"
+          />
+          <BigNavCard
+            to="/history"
+            title="History"
+            subtitle="Trophies • Placements • Past Seasons & Records"
+          />
         </div>
 
         {/* Tabs below (only groups/general now) */}
@@ -1161,7 +1180,7 @@ export default function Home() {
 
                   .sideBySideExtras{
                     display: grid;
-                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    grid-template-columns: repeat(4, minmax(0, 1fr));
                     gap: 14px;
                   }
 
@@ -1211,7 +1230,7 @@ export default function Home() {
                   }
                   .sideBySideExtras{
                     display: grid;
-                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    grid-template-columns: repeat(4, minmax(0, 1fr));
                     gap: 14px;
                   }
 

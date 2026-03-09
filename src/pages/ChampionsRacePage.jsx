@@ -739,7 +739,7 @@ export default function ChampionsRacePage() {
           </Link>
 
           <div className="brand-title">
-            <h1 style={{ margin: 0 }}>Champions Race</h1>
+            <h1 style={{ margin: 0 }}>Championship Race</h1>
             <p>Category champion standings and playoff finals</p>
           </div>
 

@@ -1109,7 +1109,7 @@ export default function Home() {
       <div className="championsRaceRow">
         <BigNavCard
           to="/championsrace"
-          title="Champions Race"
+          title="Championship Race"
           subtitle="Standings • Matchups • Race overview"
           centered
         />

@@ -1138,16 +1138,17 @@ export default function Home() {
           title="GNFC Cup"
           subtitle="Cup bracket • Matchups • Podium"
         />
+          <BigNavCard
+          to="/rivalries"
+          title="Rivalries"
+          subtitle="Historic head-to-head matchups"
+        />
         <BigNavCard
           to="/history"
           title="History"
           subtitle="Trophies • Placements • Past Seasons & Records"
         />
-        <BigNavCard
-          to="/rivalries"
-          title="Rivalries"
-          subtitle="Historic head-to-head matchups"
-        />
+
       </div>
 
         {/* Tabs below (only groups/general now) */}

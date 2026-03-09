@@ -569,7 +569,7 @@ function parseGeneralRankings(rows) {
 
 /* ----------------------------- UI bits ----------------------------- */
 
-function BigNavCard({ to, title, subtitle }) {
+function BigNavCard({ to, title, subtitle, centered = false }) {
   return (
     <Link to={to} style={{ textDecoration: "none" }}>
       <div
@@ -580,11 +580,15 @@ function BigNavCard({ to, title, subtitle }) {
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
+          alignItems: centered ? "center" : "flex-start",
+          textAlign: centered ? "center" : "left",
           borderColor: "rgba(216,120,32,0.45)",
         }}
       >
         <div style={{ fontSize: 26, fontWeight: 900 }}>{title}</div>
-        <div style={{ marginTop: 10, color: "var(--gnfc-muted)", fontSize: 14 }}>{subtitle}</div>
+        <div style={{ marginTop: 10, color: "var(--gnfc-muted)", fontSize: 14 }}>
+          {subtitle}
+        </div>
         <div style={{ marginTop: 18 }}>
           <span className="badge">Enter</span>
         </div>
@@ -1089,53 +1093,57 @@ export default function Home() {
   )
 
   return (
-    <>
-      <div className="topbar">
-        <div className="brand">
-          <img src="/gnfc-logo.png" alt="GNFC Logo" />
-          <div className="brand-title">
-            <h1>The Greek NBA Fantasy Championship</h1>
-            <p>Choose a division • Rankings</p>
-          </div>
+  <>
+    <div className="topbar">
+      <div className="brand">
+        <img src="/gnfc-logo.png" alt="GNFC Logo" />
+        <div className="brand-title">
+          <h1>The Greek NBA Fantasy Championship</h1>
+          <p>Choose a division • Rankings</p>
         </div>
       </div>
+    </div>
 
-      <div className="container">
-        {/* Divisions always visible */}
-        <div className="divisionGrid sideBySideDivisions">
-          <DivisionButton to="/division/A" title="Division A" subtitle="leagues A1, A2, A3, A4" />
-          <DivisionButton
-            to="/division/B"
-            title="Division B"
-            subtitle="leagues B1, B2, B3, B4"
-          />
-          <DivisionButton to="/division/Γ" title="Division Γ" subtitle="leagues Γ1, Γ2, Γ3..." />
-        </div>
+    <div className="container">
+      {/* Champions Race alone on top */}
+      <div className="championsRaceRow">
+        <BigNavCard
+          to="/championsrace"
+          title="Champions Race"
+          subtitle="Standings • Matchups • Race overview"
+          centered
+        />
+      </div>
 
-        {/* ✅ Big boxes under divisions */}
-        {/* ✅ Big boxes under divisions */}
-        <div className="divisionGrid sideBySideExtras" style={{ marginTop: 14 }}>
-          <BigNavCard
-            to="/champions-league"
-            title="Champions League"
-            subtitle="Matchups • Winners • Standings • History"
-          />
-          <BigNavCard
-            to="/cup"
-            title="GNFC Cup"
-            subtitle="Cup bracket • Matchups • Podium"
-          />
-          <BigNavCard
-            to="/championsrace"
-            title="Champions Race"
-            subtitle="Standings • Matchups • Race overview"
-          />
-          <BigNavCard
-            to="/history"
-            title="History"
-            subtitle="Trophies • Placements • Past Seasons & Records"
-          />
-        </div>
+      {/* Divisions below */}
+      <div className="divisionGrid sideBySideDivisions" style={{ marginTop: 14 }}>
+        <DivisionButton to="/division/A" title="Division A" subtitle="leagues A1, A2, A3, A4" />
+        <DivisionButton
+          to="/division/B"
+          title="Division B"
+          subtitle="leagues B1, B2, B3, B4"
+        />
+        <DivisionButton to="/division/Γ" title="Division Γ" subtitle="leagues Γ1, Γ2, Γ3..." />
+      </div>
+
+      {/* Other big boxes under divisions */}
+      <div className="divisionGrid sideBySideExtras" style={{ marginTop: 14 }}>
+        <BigNavCard
+          to="/champions-league"
+          title="Champions League"
+          subtitle="Matchups • Winners • Standings • History"
+        />
+        <BigNavCard
+          to="/cup"
+          title="GNFC Cup"
+          subtitle="Cup bracket • Matchups • Podium"
+        />
+        <BigNavCard
+          to="/history"
+          title="History"
+          subtitle="Trophies • Placements • Past Seasons & Records"
+        />
+      </div>
 
         {/* Tabs below (only groups/general now) */}
         <div style={{ marginTop: 14 }}>
@@ -1180,7 +1188,7 @@ export default function Home() {
 
                   .sideBySideExtras{
                     display: grid;
-                    grid-template-columns: repeat(4, minmax(0, 1fr));
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
                     gap: 14px;
                   }
 
@@ -1230,7 +1238,7 @@ export default function Home() {
                   }
                   .sideBySideExtras{
                     display: grid;
-                    grid-template-columns: repeat(4, minmax(0, 1fr));
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
                     gap: 14px;
                   }
 

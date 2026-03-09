@@ -363,7 +363,7 @@ function MatchupCardCup({ matchup, statKeys, matchupNo, open, onToggle }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
             <span style={matchTag}>Matchup {matchupNo}</span>
-            <span style={{ color: muted, fontWeight: 950, fontSize: 12, lineHeight: 1 }}>{open ? "–" : "+"}</span>
+            <span style={{ color: muted, fontWeight: 950, fontSize: 12, lineHeight: 1 }}>{open ? "–" : "+"} Expand</span>
           </div>
 
           <div style={{ display: "flex", gap: 6, flexWrap: "nowrap", justifyContent: "flex-end" }}>
@@ -757,9 +757,6 @@ export default function GnfcCupPage() {
     </div>
   </div>
 
-  <div style={{ marginTop: 8, color: muted, fontSize: 12, fontWeight: 800 }}>
-    Calculated from the last matchup of the last round (by category wins).
-  </div>
 </div>
 
         {/* Group standings */}
@@ -781,7 +778,7 @@ export default function GnfcCupPage() {
               <tbody>
                 {(groupRows || []).slice(0, 50).map((r, idx) => (
                   <tr key={`${r.Team}-${idx}`} style={rowStyle(idx)}>
-                    <td style={{ ...tdStyle, fontWeight: 950 }}>{r.Team}</td>
+                    <td style={{ ...tdStyle, fontWeight: 950, textAlign: "left"}}>{r.Team}</td>
                     <td style={tdStyle}>{cell(r.Games)}</td>
                     <td style={tdStyle}>{cell(r.Wins)}</td>
                     <td style={tdStyle}>{cell(r.Loses)}</td>
@@ -801,9 +798,6 @@ export default function GnfcCupPage() {
             </table>
           </div>
 
-          <div style={{ marginTop: 8, color: muted, fontSize: 12, fontWeight: 800 }}>
-            Read from columns <b>AL–AW</b> (headers are overridden to Team/Games/Wins/Loses/Ties/W%).
-          </div>
         </div>
       </div>
 
@@ -828,7 +822,7 @@ export default function GnfcCupPage() {
                 <button type="button" onClick={() => toggleRound(r.roundTitle)} style={roundHeaderBtn}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                     <span style={roundPill}>{r.roundTitle}</span>
-                    <span style={subtleCount}>{r.matchups.length} matchups</span>
+                    <span style={subtleCount}>{r.matchups.length} matchups. Click to expand.</span>
                   </div>
                   <span style={{ color: muted, fontWeight: 950, fontSize: 16 }}>{open ? "–" : "+"}</span>
                 </button>

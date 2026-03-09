@@ -33,7 +33,7 @@ function deduceDivisionFromLeague(leagueVal) {
   if (first === "A" || first === "a") return "A"
   if (first === "B" || first === "b") return "B"
   if (first === "Γ" || first === "γ") return "Γ"
-  if (first === "G" || first === "g") return "Γ" // optional fallback
+  if (first === "G" || first === "g") return "Γ"
 
   if (/\bA\d/i.test(t)) return "A"
   if (/\bB\d/i.test(t)) return "B"
@@ -49,7 +49,6 @@ const LEAGUE_COL = "League"
 const LEAGUE_RANK_COL = "League Ranking"
 const PLAYOFFS_COL = "Playoffs"
 
-// These exist (sometimes twice). Tab picks which version to use.
 const RANK_COL = "Category Standing"
 const BASE_COLS = ["GP", "FG%", "3P", "FT%", "PTS", "REB", "AST", "ST", "BLK", "TO"]
 
@@ -57,11 +56,9 @@ function isHigherBetterForTab(baseCol, tab) {
   const c = norm(baseCol)
 
   if (tab === "rankings") {
-    // rankings tab: smaller is ALWAYS better
     return false
   }
 
-  // totals tab: bigger is better, except TO (smaller is better)
   if (c === "to") return false
   return true
 }
@@ -76,7 +73,6 @@ function csvUrl(sheetId, gid) {
   return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${encodeURIComponent(gid)}`
 }
 
-// Simple but solid CSV parser (quoted commas + escaped quotes)
 function parseCSV(text) {
   const rows = []
   let row = []
@@ -127,9 +123,6 @@ function parseCSV(text) {
   return rows
 }
 
-/**
- * Header row is where column B (index 1) === "Team"
- */
 function findHeaderRowIndex(rows) {
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i] || []
@@ -138,9 +131,6 @@ function findHeaderRowIndex(rows) {
   return -1
 }
 
-/**
- * If header appears twice, rename 2nd occurrence to "X_2", 3rd to "X_3" etc.
- */
 function dedupeHeadersWithNumericSuffix(headerRow) {
   const seen = new Map()
   return (headerRow || []).map((raw) => {
@@ -179,7 +169,6 @@ function buildItemsFromSingleHeader(rows) {
       obj[h] = r[j]
     }
 
-    // Must have Team + League to count as a team row
     if (!s(obj[TEAM_COL]) || !s(obj[LEAGUE_COL])) continue
 
     items.push(obj)
@@ -222,8 +211,7 @@ export default function HistoryPage() {
   const [headers, setHeaders] = useState([])
   const [items, setItems] = useState([])
 
-  // Tabs: Totals (default) / Rankings
-  const [activeTab, setActiveTab] = useState("totals") // totals | rankings
+  const [activeTab, setActiveTab] = useState("totals")
 
   useEffect(() => {
     let alive = true
@@ -263,7 +251,6 @@ export default function HistoryPage() {
     }
   }, [year, gid])
 
-  // Resolve which keys to use per tab (if _2 doesn't exist, fallback to base)
   const tabRankKey = useMemo(() => pickKey(items, RANK_COL, activeTab), [items, activeTab])
   const tabLeagueRankKey = useMemo(() => pickKey(items, LEAGUE_RANK_COL, activeTab), [items, activeTab])
   const tabPlayoffsKey = useMemo(() => pickKey(items, PLAYOFFS_COL, activeTab), [items, activeTab])
@@ -272,13 +259,6 @@ export default function HistoryPage() {
     return BASE_COLS.map((c) => pickKey(items, c, activeTab))
   }, [items, activeTab])
 
-  /* ----------------------------- Podiums (per league) ----------------------------- */
-  // winner -> 1st
-  // final -> 2nd
-  // semifinal -> 3rd/4th (up to 2 teams)
-  //
-  // Rule: If a league has no explicit "winner", but it contains a "champion" row,
-  // that champion is also the winner of his league -> show him as #1.
   const leagueCards = useMemo(() => {
     if (!items?.length) return []
 
@@ -333,7 +313,6 @@ export default function HistoryPage() {
         return { league: lk, total: rows.length, podium, mode: "playoffs" }
       }
 
-      // fallback: League Ranking top 3
       const sorted = [...rows].sort(
         (x, y) => (toNum(x?.[tabLeagueRankKey]) ?? 999999) - (toNum(y?.[tabLeagueRankKey]) ?? 999999)
       )
@@ -346,7 +325,6 @@ export default function HistoryPage() {
     })
   }, [items, tabLeagueRankKey, tabPlayoffsKey])
 
-  /* ----------------------------- Division Champions (A/B/Γ) ----------------------------- */
   const divisionChampions = useMemo(() => {
     if (!items?.length) return []
 
@@ -385,7 +363,6 @@ export default function HistoryPage() {
     })
   }, [items, tabPlayoffsKey, tabLeagueRankKey, tabRankKey])
 
-  // Top/bottom 5 per category for ACTIVE tab
   const catRanks = useMemo(() => {
     const out = {}
 
@@ -418,7 +395,6 @@ export default function HistoryPage() {
     return out
   }, [items, tabCols, activeTab])
 
-  // Full standings sorted by (tab) Category Standing
   const fullSorted = useMemo(() => {
     const copy = [...items]
     copy.sort((a, b) => (toNum(a?.[tabRankKey]) ?? 999999) - (toNum(b?.[tabRankKey]) ?? 999999))
@@ -442,7 +418,6 @@ export default function HistoryPage() {
 
   return (
     <div className="histPage">
-      {/* header bar */}
       <div className="histHeader">
         <div className="brandRow">
           <div
@@ -467,20 +442,6 @@ export default function HistoryPage() {
             <Link to="/" className="badge" style={{ textDecoration: "none" }}>
               Home
             </Link>
-
-            <select
-              value={year}
-              onChange={(e) => navigate(`/history/${encodeURIComponent(e.target.value)}`)}
-              style={yearSelectStyle}
-              aria-label="Select year"
-              disabled={loading || !yearOptions.length}
-            >
-              {yearOptions.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
       </div>
@@ -501,9 +462,20 @@ export default function HistoryPage() {
                 <div className="bigYear">{year}</div>
 
                 <div className="miniMeta">
-                  <span className="chip">GID: {gid}</span>
-                  <span className="chip">CSV export (no GViz)</span>
-                  <span className="chip">Header: col B = Team</span>
+                  <span className="chip">Choose a Year to see past Podiums</span>
+                  <select
+                  value={year}
+                  onChange={(e) => navigate(`/history/${encodeURIComponent(e.target.value)}`)}
+                  style={yearSelectStyle}
+                  aria-label="Select year"
+                  disabled={loading || !yearOptions.length}
+                >
+                  {yearOptions.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
                 </div>
 
                 <div className="tabs" style={{ marginTop: 12 }}>
@@ -530,12 +502,12 @@ export default function HistoryPage() {
               <div className="card">
                 <div className="cardHead">
                   <div className="cardTitle">Podiums</div>
-                  <div className="cardMeta">Per league (from Playoffs column)</div>
+                  <div className="cardMeta">Per league</div>
                 </div>
 
+              
                 {leagueCards.length ? (
                   <>
-                    {/* ✅ Division Champions (trophy ONLY inside this pill) */}
                     <div className="divChampRow">
                       {divisionChampions.map((c) => (
                         <div key={`divchamp-${activeTab}-${c.div}`} className="divChampCard">
@@ -583,7 +555,6 @@ export default function HistoryPage() {
               </div>
             </div>
 
-            {/* Full standings (active tab) */}
             <div className="card tableCard">
               <div className="cardHead">
                 <div className="cardTitle">Full standings</div>
@@ -663,8 +634,6 @@ export default function HistoryPage() {
   )
 }
 
-/* ----------------------------- Podium Card (NO manager) ----------------------------- */
-
 function LeaguePodiumCard({ league, total, podium, mode }) {
   return (
     <div className="leagueCard">
@@ -707,8 +676,6 @@ function LeaguePodiumCard({ league, total, podium, mode }) {
     </div>
   )
 }
-
-/* ----------------------------- styles ----------------------------- */
 
 const styles = `
 .histPage { min-height: 100vh; background: #f6fbfb; color: #0f172a; }
@@ -763,7 +730,6 @@ const styles = `
   color: rgba(15,23,42,.65);
 }
 
-/* layout */
 .topRow { display: grid; grid-template-columns: 360px 1fr; gap: 14px; }
 @media (max-width: 980px) { .topRow { grid-template-columns: 1fr; } }
 
@@ -794,7 +760,7 @@ const styles = `
   color: rgba(15,23,42,.75);
 }
 
-/* tabs */
+
 .tabs { display: flex; gap: 10px; flex-wrap: wrap; }
 .tabBtn {
   appearance: none;
@@ -813,7 +779,6 @@ const styles = `
 }
 .tabBtn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 
-/* ✅ Division champions row */
 .divChampRow{
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -883,7 +848,6 @@ const styles = `
   padding: 10px 0 2px;
 }
 
-/* league podium cards grid */
 .leagueGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 1200px) { .leagueGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 920px) { .leagueGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -924,7 +888,6 @@ const styles = `
 .teamLink:hover { color: rgb(249,115,22); text-decoration: underline; }
 .empty { color: rgba(15,23,42,.55); font-weight: 900; font-size: 12.5px; }
 
-/* tables */
 .tableCard { margin-top: 14px; }
 .tableWrap {
   overflow: auto;
@@ -958,7 +921,6 @@ const styles = `
 .rankCell { font-weight: 1000; }
 .numCell, .num { font-variant-numeric: tabular-nums; }
 
-/* pills for top/bottom 5 */
 .pillStat {
   display: inline-flex;
   align-items: center;

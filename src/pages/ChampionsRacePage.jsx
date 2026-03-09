@@ -538,7 +538,7 @@ function MatchupCardCupLike({ matchup, statKeys, matchupNo, open, onToggle }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
             <span style={matchTag}>Final {matchupNo}</span>
             <span style={{ color: "var(--gnfc-muted)", fontWeight: 950, fontSize: 12, lineHeight: 1 }}>
-              {open ? "–" : "+"}
+              {open ? "–" : "+"} Expand
             </span>
           </div>
 

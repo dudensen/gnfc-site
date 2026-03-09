@@ -1,6 +1,6 @@
-// src/pages/GnfcCupPage.jsx
 import React, { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
+import { RANKING_SHEET_ID, RANKING_GIDS } from "../config/rankingGids"
 
 /* ============================== config ============================== */
 
@@ -51,6 +51,9 @@ function teamHref(team) {
 }
 function isWeekRoundTitle(v) {
   return norm(v).includes("week")
+}
+function hasLetters(x) {
+  return /[A-Za-zΑ-Ωα-ω]/.test(s(x))
 }
 function isLikelyHeaderWord(v) {
   const t = norm(v)
@@ -108,6 +111,129 @@ function parseCSV(text) {
   rows.push(row)
   while (rows.length && isEmptyRow(rows[rows.length - 1])) rows.pop()
   return rows
+}
+
+function exportCsvUrl(sheetId, gid) {
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`
+}
+
+function gvizCsvUrl(sheetId, gid) {
+  const tq = encodeURIComponent("select *")
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?gid=${gid}&tqx=out:csv&tq=${tq}`
+}
+
+/* ============================== past years helpers ============================== */
+
+function headerFingerprint(h) {
+  return norm(h).replace(/[^a-z0-9α-ω]/g, "")
+}
+
+function findHeaderRow(rows, maxScan = 12) {
+  const limit = Math.min(rows.length, maxScan)
+  let best = { rowIdx: 0, score: -1 }
+
+  for (let r = 0; r < limit; r++) {
+    const row = rows[r] || []
+    let score = 0
+
+    for (let c = 0; c < row.length; c++) {
+      const fp = headerFingerprint(row[c])
+      if (!fp) continue
+      if (fp === "team" || fp.includes("team")) score += 3
+      if (fp === "playoffs" || fp.includes("playoffs")) score += 2
+      if (fp === "cup") score += 4
+    }
+
+    if (score > best.score) best = { rowIdx: r, score }
+  }
+
+  return best.rowIdx
+}
+
+function findColIndex(headerRow, predicate) {
+  for (let i = 0; i < headerRow.length; i++) {
+    if (predicate(headerRow[i], i)) return i
+  }
+  return -1
+}
+
+function findColIndexJoined(headerRow, predicateJoined, maxSpan = 3) {
+  for (let i = 0; i < headerRow.length; i++) {
+    let acc = ""
+    for (let span = 1; span <= maxSpan && i + span - 1 < headerRow.length; span++) {
+      const piece = s(headerRow[i + span - 1])
+      acc = acc ? `${acc} ${piece}` : piece
+      if (predicateJoined(acc, i, span)) return i
+    }
+  }
+  return -1
+}
+
+function parsePastCupResults(csvRows) {
+  if (!Array.isArray(csvRows) || csvRows.length < 2) return null
+
+  const hdrIdx = findHeaderRow(csvRows, 12)
+  const header = csvRows[hdrIdx] || []
+  const dataStart = hdrIdx + 1
+
+  let idxTeam = findColIndex(header, (h) => {
+    const fp = headerFingerprint(h)
+    return fp === "team" || fp.includes("team")
+  })
+
+  let idxCup = findColIndex(header, (h) => headerFingerprint(h) === "cup")
+  if (idxCup < 0) {
+    idxCup = findColIndexJoined(
+      header,
+      (joined) => headerFingerprint(joined) === "cup",
+      3
+    )
+  }
+
+  if (idxTeam < 0 || idxCup < 0) return null
+
+  const buckets = {
+    Winner: [],
+    Final: [],
+    "4": [],
+    "8": [],
+    "16": [],
+    "32": [],
+    "1st R.": [],
+    "2nd R.": [],
+    "3rd R.": [],
+  }
+
+  let emptyStreak = 0
+  for (let i = dataStart; i < csvRows.length; i++) {
+    const r = csvRows[i] || []
+    const team = s(r[idxTeam])
+    const valRaw = s(r[idxCup])
+
+    const looksEmpty = !team && !valRaw
+    if (looksEmpty) {
+      emptyStreak++
+      if (emptyStreak >= 5) break
+      continue
+    }
+    emptyStreak = 0
+
+    if (!hasLetters(team) || !valRaw) continue
+
+    const v = norm(valRaw)
+
+    if (v === "winner") buckets.Winner.push(team)
+    else if (v === "final") buckets.Final.push(team)
+    else if (v === "4") buckets["4"].push(team)
+    else if (v === "8") buckets["8"].push(team)
+    else if (v === "16") buckets["16"].push(team)
+    else if (v === "32") buckets["32"].push(team)
+    else if (v === "1st r." || v === "1st r") buckets["1st R."].push(team)
+    else if (v === "2nd r." || v === "2nd r") buckets["2nd R."].push(team)
+    else if (v === "3rd r." || v === "3rd r") buckets["3rd R."].push(team)
+  }
+
+  return buckets
 }
 
 /* ============================== theme tokens ============================== */
@@ -194,13 +320,11 @@ function compareStat(aVal, bVal, key) {
   const bNum = toNumLoose(bVal)
 
   if (aNum !== null && bNum !== null) {
-    // Turnovers: lower is better
     if (k === "to" || k === "tov" || k.includes("turnover")) {
       if (aNum < bNum) return 1
       if (aNum > bNum) return -1
       return 0
     }
-    // Everything else: higher is better
     if (aNum > bNum) return 1
     if (aNum < bNum) return -1
     return 0
@@ -213,7 +337,6 @@ function compareStat(aVal, bVal, key) {
   return aS > bS ? 1 : -1
 }
 
-// W = cats won by team1, L = cats won by team2, T = ties
 function scoreWLT(aCols, bCols, statKeys) {
   let w = 0,
     l = 0,
@@ -229,11 +352,9 @@ function scoreWLT(aCols, bCols, statKeys) {
 
 /* ============================== chips/pills ============================== */
 
-// tone: "a" => team1 wins (orange pill), "b" => team2 wins (green pill), "tie" => red pill, null => LOSER (no enclosure)
 function StatChip({ value, tone }) {
   const v = cell(value)
 
-  // LOSER: no enclosure/frame
   if (!tone) {
     return <span style={{ display: "inline-block", fontWeight: 900, fontSize: 13, color: ink }}>{v}</span>
   }
@@ -260,7 +381,6 @@ function StatChip({ value, tone }) {
   return <span style={st}>{v}</span>
 }
 
-// header pills: numbers only
 function ScorePill({ value, tone }) {
   const base = {
     display: "inline-flex",
@@ -280,6 +400,179 @@ function ScorePill({ value, tone }) {
 
   const st = tone === "team1" ? { ...base, ...team1 } : tone === "team2" ? { ...base, ...team2 } : { ...base, ...tie }
   return <span style={st}>{cell(value)}</span>
+}
+
+/* ============================== Past Years Cup UI ============================== */
+
+function PastYearsCupBox({ years, year, setYear, loading, err, buckets }) {
+  const selectStyle = {
+    width: "100%",
+    height: 34,
+    borderRadius: 12,
+    padding: "0 10px",
+    fontWeight: 900,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(0,0,0,0.10)",
+    color: "var(--gnfc-ink)",
+    outline: "none",
+  }
+
+  const order = ["Winner", "Final", "4", "8", "16", "32"]
+  const labelMap = {
+    Winner: "Winner",
+    Final: "Final",
+    "4": "Final 4",
+    "8": "Final 8",
+    "16": "Last 16",
+    "32": "Last 32",
+  }
+
+  const pillStyle = (rawKey) => {
+    const isWinner = rawKey === "Winner"
+    if (isWinner) {
+      return {
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: 20,
+        padding: "0 8px",
+        borderRadius: 999,
+        fontSize: 10,
+        fontWeight: 950,
+        letterSpacing: 0.2,
+        whiteSpace: "nowrap",
+        color: "var(--gnfc-muted)",
+        border: "1px solid rgba(216,120,32,0.55)",
+        background: "rgba(216,120,32,0.14)",
+      }
+    }
+    return {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      height: 20,
+      padding: "0 8px",
+      borderRadius: 999,
+      fontSize: 10,
+      fontWeight: 950,
+      letterSpacing: 0.2,
+      whiteSpace: "nowrap",
+      color: "var(--gnfc-muted)",
+      border: "1px solid rgba(10,122,114,0.45)",
+      background: "rgba(10,122,114,0.10)",
+    }
+  }
+
+  const headerRow = {
+    display: "grid",
+    gridTemplateColumns: "112px 1fr",
+    gap: 10,
+    padding: "7px 9px",
+    borderBottom: "1px solid rgba(255,255,255,0.10)",
+    color: "var(--gnfc-muted)",
+    fontSize: 11,
+    fontWeight: 950,
+    letterSpacing: 0.2,
+  }
+
+  const row = {
+    display: "grid",
+    gridTemplateColumns: "112px 1fr",
+    gap: 10,
+    padding: "8px 9px",
+    borderBottom: "1px solid rgba(255,255,255,0.08)",
+    alignItems: "start",
+  }
+
+  const teamWrap = {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "4px 10px",
+    fontWeight: 900,
+    fontSize: 12,
+    lineHeight: 1.2,
+  }
+
+  const teamLink = {
+    textDecoration: "none",
+    color: "inherit",
+    padding: "1px 0",
+  }
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 950, letterSpacing: 0.35, color: "var(--gnfc-muted)" }}>
+        Choose a Year to see previous Cup results
+      </div>
+
+      <div style={{ height: 8 }} />
+
+      <select value={year || ""} onChange={(e) => setYear(e.target.value)} style={selectStyle}>
+        {years.map((y) => (
+          <option key={y} value={y}>
+            {y}
+          </option>
+        ))}
+      </select>
+
+      <div style={{ height: 10 }} />
+
+      {loading ? (
+        <div style={{ color: "var(--gnfc-muted)", fontWeight: 900 }}>Loading…</div>
+      ) : err ? (
+        <div style={{ color: "var(--gnfc-muted)", fontWeight: 900 }}>{err}</div>
+      ) : buckets ? (
+        <div
+          style={{
+            borderRadius: 14,
+            border: "1px solid rgba(255,255,255,0.12)",
+            background: "rgba(0,0,0,0.06)",
+            overflow: "hidden",
+          }}
+        >
+          <div style={headerRow}>
+            <div>Stage</div>
+            <div>Teams</div>
+          </div>
+
+          {order.map((rawKey, i) => {
+            const label = labelMap[rawKey] || rawKey
+            const teams = buckets?.[rawKey] || []
+
+            return (
+              <div
+                key={rawKey}
+                style={{
+                  ...row,
+                  background: i % 2 === 0 ? "rgba(255,255,255,0.015)" : "rgba(0,0,0,0.06)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={pillStyle(rawKey)}>{label}</span>
+                </div>
+
+                <div style={teamWrap}>
+                  {teams.length ? (
+                    teams.map((t) => (
+                      <Link key={`${rawKey}-${t}`} to={teamHref(t)} className="teamLinkHover" style={teamLink}>
+                        {cell(t)}
+                      </Link>
+                    ))
+                  ) : (
+                    <span style={{ color: "var(--gnfc-muted)", fontWeight: 900, fontSize: 12 }}>—</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div style={{ color: "var(--gnfc-muted)", fontWeight: 900 }}>
+          Could not find “Team” + “Cup” columns in that year.
+        </div>
+      )}
+    </div>
+  )
 }
 
 /* ============================== Matchup Card (accordion) ============================== */
@@ -315,7 +608,7 @@ function MatchupCardCup({ matchup, statKeys, matchupNo, open, onToggle }) {
     fontSize: 11,
     fontWeight: 900,
     letterSpacing: 0.15,
-    color: muted, // same for both
+    color: muted,
     whiteSpace: "nowrap",
   }
 
@@ -359,7 +652,6 @@ function MatchupCardCup({ matchup, statKeys, matchupNo, open, onToggle }) {
         style={{ cursor: "pointer", padding: "10px 10px 8px" }}
         title={open ? "Click to collapse" : "Click to expand"}
       >
-        {/* Top row: title + pills */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
             <span style={matchTag}>Matchup {matchupNo}</span>
@@ -440,15 +732,25 @@ export default function GnfcCupPage() {
 
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState("")
-  const [rawStatKeys, setRawStatKeys] = useState([]) // headers from C..L
+  const [rawStatKeys, setRawStatKeys] = useState([])
   const [rounds, setRounds] = useState([])
   const [openRounds, setOpenRounds] = useState({})
   const [openCards, setOpenCards] = useState({})
 
-  const [groupRows, setGroupRows] = useState([]) // {Team, Games, Wins, Loses, Ties, "W%"}
+  const [groupRows, setGroupRows] = useState([])
   const [podium, setPodium] = useState({ first: "", second: "" })
 
-  // C..L cats table keys (remove GP and remove "League" if it somehow exists there)
+  const pastYears = useMemo(() => {
+    return Object.keys(RANKING_GIDS || {})
+      .filter((k) => /^\d{4}$/.test(k))
+      .sort((a, b) => Number(b) - Number(a))
+  }, [])
+
+  const [pastYear, setPastYear] = useState(() => pastYears?.[0] || "")
+  const [pastLoading, setPastLoading] = useState(false)
+  const [pastErr, setPastErr] = useState("")
+  const [pastBuckets, setPastBuckets] = useState(null)
+
   const statKeys = useMemo(
     () =>
       rawStatKeys.filter((k) => {
@@ -474,14 +776,11 @@ export default function GnfcCupPage() {
         const grid = parseCSV(text)
         if (!grid?.length) throw new Error("CSV is empty")
 
-        // Row 2 (index 1) headers for stats C..L (even if they are not perfect, we trust positions)
         const headerRow = grid[1] || []
         const headersCL = headerRow.slice(COL_STATS_START, COL_STATS_END_EXCL).map(s).filter(Boolean)
-        setRawStatKeys(headersCL)
 
-        // --- Parse matchups (with fallback if col A empty) ---
         let currentRound = ""
-        const roundMap = new Map() // roundTitle -> Map(matchKey -> { displayNo, order, teams:[] })
+        const roundMap = new Map()
 
         const autoCounterByRound = new Map()
         const maxNumByRound = new Map()
@@ -519,7 +818,6 @@ export default function GnfcCupPage() {
           }
         }
 
-        // --- Parse group standings from AL..AW ---
         const gs = []
 
         for (let i = 2; i < grid.length; i++) {
@@ -531,7 +829,6 @@ export default function GnfcCupPage() {
           const colD = s(row[COL_ROUND_TITLE])
           const matchupNo = toNumLoose(colA)
 
-          // Round title: col D contains "Week"
           if (colD && isWeekRoundTitle(colD)) {
             if (currentRound) flushPending(currentRound)
             currentRound = colD
@@ -540,7 +837,6 @@ export default function GnfcCupPage() {
             const roundKey = currentRound || "Round"
             ensureRound(roundKey)
 
-            // Build cols from C..L and add League from O
             const statsCL = row.slice(COL_STATS_START, COL_STATS_END_EXCL)
             const cols = {}
             for (let j = 0; j < headersCL.length; j++) {
@@ -550,7 +846,6 @@ export default function GnfcCupPage() {
             }
             cols[LEAGUE_KEY] = s(row[COL_LEAGUE])
 
-            // Primary: matchup numbers
             if (matchupNo && colB) {
               flushPending(roundKey)
               maxNumByRound.set(roundKey, Math.max(maxNumByRound.get(roundKey) || 0, matchupNo))
@@ -560,13 +855,11 @@ export default function GnfcCupPage() {
               if (!mMap.has(key)) mMap.set(key, { displayNo: matchupNo, order: matchupNo, teams: [] })
               mMap.get(key).teams.push({ team: colB, cols })
             } else if (!matchupNo && colB) {
-              // Fallback: pair sequential team rows
               pendingTeamsByRound.get(roundKey).push({ team: colB, cols })
               if (pendingTeamsByRound.get(roundKey).length >= 2) flushPending(roundKey)
             }
           }
 
-          // Group standings row: read AL..AW first 6 fields as Team,Games,Wins,Loses,Ties,W%
           const gsCells = row.slice(COL_GS_START, COL_GS_END_EXCL)
           const team = s(gsCells?.[0])
           if (team && !isLikelyHeaderWord(team)) {
@@ -578,14 +871,19 @@ export default function GnfcCupPage() {
               Ties: s(gsCells?.[4]),
               "W%": s(gsCells?.[5]),
             }
-            // accept if it looks like a real row (at least one numeric-ish field present)
-            const hasAny =
-              s(rec.Games) || s(rec.Wins) || s(rec.Loses) || s(rec.Ties) || s(rec["W%"])
+            const hasAny = s(rec.Games) || s(rec.Wins) || s(rec.Loses) || s(rec.Ties) || s(rec["W%"])
             if (hasAny) gs.push(rec)
           }
         }
 
         if (currentRound) flushPending(currentRound)
+
+        const nextStatKeys = headersCL.filter((k) => {
+          const nk = norm(k)
+          if (nk === "gp") return false
+          if (nk === norm(LEAGUE_KEY)) return false
+          return true
+        })
 
         const outRounds = Array.from(roundMap.entries()).map(([roundTitle, mMap]) => {
           const matchups = Array.from(mMap.values())
@@ -597,16 +895,15 @@ export default function GnfcCupPage() {
           return { roundTitle, matchups }
         })
 
-        // Podium: use last round's last matchup winner (by category W/L/T)
         let first = ""
         let second = ""
-        if (outRounds.length && statKeys.length) {
+        if (outRounds.length && nextStatKeys.length) {
           const lastRound = outRounds[outRounds.length - 1]
           const lastMatch = lastRound?.matchups?.[lastRound.matchups.length - 1]
           const a = lastMatch?.matchup?.a
           const b = lastMatch?.matchup?.b
           if (a?.team && b?.team) {
-            const { w, l } = scoreWLT(a?.cols, b?.cols, statKeys)
+            const { w, l } = scoreWLT(a?.cols, b?.cols, nextStatKeys)
             if (w > l) {
               first = a.team
               second = b.team
@@ -618,11 +915,11 @@ export default function GnfcCupPage() {
         }
 
         if (!alive) return
+        setRawStatKeys(headersCL)
         setRounds(outRounds)
         if (outRounds.length) setOpenRounds({ [outRounds[0].roundTitle]: true })
 
         const deduped = dedupeByTeam(gs)
-        // sort by W% desc if possible, else leave as-is
         deduped.sort((r1, r2) => {
           const a = toNumLoose(String(r1["W%"]).replace("%", "")) ?? -999
           const b = toNumLoose(String(r2["W%"]).replace("%", "")) ?? -999
@@ -643,7 +940,52 @@ export default function GnfcCupPage() {
     return () => {
       alive = false
     }
-  }, [statKeys.length]) // statKeys derived from headers; safe trigger
+  }, [])
+
+  useEffect(() => {
+    if (!pastYear) return
+    const gid = RANKING_GIDS?.[pastYear]
+    if (!gid) {
+      setPastBuckets(null)
+      setPastErr(`Missing gid for year ${pastYear}`)
+      return
+    }
+
+    let alive = true
+    ;(async () => {
+      try {
+        setPastLoading(true)
+        setPastErr("")
+        setPastBuckets(null)
+
+        let res = await fetch(exportCsvUrl(RANKING_SHEET_ID, gid))
+        let text = await res.text()
+
+        if (!res.ok) {
+          res = await fetch(gvizCsvUrl(RANKING_SHEET_ID, gid))
+          text = await res.text()
+          if (!res.ok) throw new Error(`Year ${pastYear} fetch failed: ${res.status} ${res.statusText}`)
+        }
+
+        const rows = parseCSV(text)
+        const buckets = parsePastCupResults(rows)
+
+        if (!alive) return
+        setPastBuckets(buckets)
+      } catch (e) {
+        if (!alive) return
+        setPastErr(e?.message || String(e))
+        setPastBuckets(null)
+      } finally {
+        if (!alive) return
+        setPastLoading(false)
+      }
+    })()
+
+    return () => {
+      alive = false
+    }
+  }, [pastYear])
 
   function toggleRound(title) {
     setOpenRounds((prev) => ({ ...prev, [title]: !prev[title] }))
@@ -662,7 +1004,6 @@ export default function GnfcCupPage() {
 
   return (
     <div style={{ width: "100%", padding: "18px clamp(12px, 2vw, 26px) 40px" }}>
-      {/* max 6 columns + responsive downshift */}
       <style>{`
         .cupGrid {
           display: grid;
@@ -675,9 +1016,21 @@ export default function GnfcCupPage() {
         @media (max-width: 1000px) { .cupGrid { grid-template-columns: repeat(3, minmax(240px, 1fr)); } }
         @media (max-width: 760px)  { .cupGrid { grid-template-columns: repeat(2, minmax(240px, 1fr)); } }
         @media (max-width: 520px)  { .cupGrid { grid-template-columns: repeat(1, minmax(240px, 1fr)); } }
+
+        .teamLinkHover{
+          transition: color .15s ease;
+        }
+        .teamLinkHover:hover{
+          color: #db7d12 !important;
+        }
+
+        @media (max-width: 900px){
+          .cupTopGrid{
+            grid-template-columns: 1fr !important;
+          }
+        }
       `}</style>
 
-      {/* header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
         <div style={{ fontSize: 32, fontWeight: 950, letterSpacing: 0.2, color: ink }}>GNFC CUP</div>
 
@@ -691,8 +1044,8 @@ export default function GnfcCupPage() {
         </div>
       </div>
 
-      {/* ====== TOP: Podium (left) + Group Standings (right) ====== */}
       <div
+        className="cupTopGrid"
         style={{
           display: "grid",
           gap: 12,
@@ -700,66 +1053,72 @@ export default function GnfcCupPage() {
           marginBottom: 14,
         }}
       >
-        {/* Podium */}
-        {/* Podium */}
-<div className="card">
-  {/* header image */}
-  <div style={{ display: "grid", placeItems: "center", marginBottom: 10 }}>
-    <img
-      src="/gnfccup.jpg"
-      alt="GNFC CUP"
-      style={{
-        width: "100%",
-        height: "100%",
-        maxWidth: 360,
-        objectFit: "cover",
-        borderRadius: 14,
-        border: `1px solid ${border}`,
-        background: "rgba(0,0,0,0.02)",
-      }}
-    />
-    <div style={{ marginTop: 8, fontWeight: 950, letterSpacing: 0.6, color: ink }}>
-      GNFC CUP
-    </div>
-  </div>
+        <div className="card">
+          <div style={{ display: "grid", placeItems: "center", marginBottom: 10 }}>
+            <img
+              src="/gnfccup.jpg"
+              alt="GNFC CUP"
+              style={{
+                width: "100%",
+                height: "100%",
+                maxWidth: 360,
+                objectFit: "cover",
+                borderRadius: 14,
+                border: `1px solid ${border}`,
+                background: "rgba(0,0,0,0.02)",
+              }}
+            />
+            <div style={{ marginTop: 8, fontWeight: 950, letterSpacing: 0.6, color: ink }}>
+              GNFC CUP
+            </div>
+          </div>
 
-  <div style={{ fontWeight: 950, fontSize: 16, color: ink, marginBottom: 8 }}>Final Podium</div>
+          <div style={{ fontWeight: 950, fontSize: 16, color: ink, marginBottom: 8 }}>Final Podium</div>
 
-  <div style={{ display: "grid", gap: 8 }}>
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        border: `1px solid ${border}`,
-        borderRadius: 14,
-        padding: "10px 12px",
-        background: "rgba(219, 125, 18, 0.10)",
-      }}
-    >
-      <div style={{ fontWeight: 950, color: ink }}>1st</div>
-      <div style={{ fontWeight: 950, color: ink }}>{podium.first || "—"}</div>
-    </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                border: `1px solid ${border}`,
+                borderRadius: 14,
+                padding: "10px 12px",
+                background: "rgba(219, 125, 18, 0.10)",
+              }}
+            >
+              <div style={{ fontWeight: 950, color: ink }}>1st</div>
+              <div style={{ fontWeight: 950, color: ink }}>{podium.first || "—"}</div>
+            </div>
 
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        border: `1px solid ${border}`,
-        borderRadius: 14,
-        padding: "10px 12px",
-        background: "rgba(5, 97, 97, 0.08)",
-      }}
-    >
-      <div style={{ fontWeight: 950, color: ink }}>2nd</div>
-      <div style={{ fontWeight: 950, color: ink }}>{podium.second || "—"}</div>
-    </div>
-  </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                border: `1px solid ${border}`,
+                borderRadius: 14,
+                padding: "10px 12px",
+                background: "rgba(5, 97, 97, 0.08)",
+              }}
+            >
+              <div style={{ fontWeight: 950, color: ink }}>2nd</div>
+              <div style={{ fontWeight: 950, color: ink }}>{podium.second || "—"}</div>
+            </div>
+          </div>
 
-</div>
+          {pastYears?.length ? (
+            <PastYearsCupBox
+              years={pastYears}
+              year={pastYear}
+              setYear={setPastYear}
+              loading={pastLoading}
+              err={pastErr}
+              buckets={pastBuckets}
+            />
+          ) : null}
+        </div>
 
-        {/* Group standings */}
         <div className="card" style={{ overflow: "hidden" }}>
           <div style={{ fontWeight: 950, fontSize: 16, color: ink, marginBottom: 8 }}>Group Standings</div>
 
@@ -778,7 +1137,7 @@ export default function GnfcCupPage() {
               <tbody>
                 {(groupRows || []).slice(0, 50).map((r, idx) => (
                   <tr key={`${r.Team}-${idx}`} style={rowStyle(idx)}>
-                    <td style={{ ...tdStyle, fontWeight: 950, textAlign: "left"}}>{r.Team}</td>
+                    <td style={{ ...tdStyle, fontWeight: 950, textAlign: "left" }}>{r.Team}</td>
                     <td style={tdStyle}>{cell(r.Games)}</td>
                     <td style={tdStyle}>{cell(r.Wins)}</td>
                     <td style={tdStyle}>{cell(r.Loses)}</td>
@@ -797,11 +1156,9 @@ export default function GnfcCupPage() {
               </tbody>
             </table>
           </div>
-
         </div>
       </div>
 
-      {/* ====== BODY ====== */}
       {loading ? (
         <div className="card">Loading…</div>
       ) : err ? (

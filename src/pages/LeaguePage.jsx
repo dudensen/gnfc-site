@@ -50,10 +50,9 @@ function gvizToObjects(gviz) {
     const out = {}
     const cells = r?.c || []
 
-    // ✅ IMPORTANT: iterate over ALL columns, not only cells that exist
     for (let i = 0; i < cols.length; i++) {
       const key = cols[i] || `col_${i + 1}`
-      const cc = cells[i] // may be undefined when GViz omits it
+      const cc = cells[i]
       out[key] = cc ? (cc.f ?? cc.v ?? null) : null
     }
 
@@ -64,12 +63,7 @@ function gvizToObjects(gviz) {
 }
 
 /* ----------------------------- CSV parsing (Playoffs only) ----------------------------- */
-/**
- * Minimal CSV parser:
- * - commas
- * - quoted values with commas
- * - "" escape inside quoted fields
- */
+
 function parseCsv(text) {
   const rows = []
   let row = []
@@ -367,7 +361,7 @@ function buildPlayoffsSectionsCsv(rows, cols, leagueKey) {
   if (!cleaned.length) return []
 
   const sample = cleaned[0]
-  const kLeague = findKeyByNorm(sample, "league") // may or may not exist
+  const kLeague = findKeyByNorm(sample, "league")
   const teamKey = pickTeamKey(cleaned)
   const leagueNorm = norm(leagueKey)
 
@@ -387,11 +381,9 @@ function buildPlayoffsSectionsCsv(rows, cols, leagueKey) {
     const team = s(r?.[teamKey])
     const fgCell = s(r?.[kFG])
 
-    // marker row: Team empty, FG% column contains title text (no %)
     if (!team) {
       if (fgCell && !fgCell.includes("%") && hasLetters(fgCell)) {
         const next = normalizeRoundTitle(fgCell)
-        console.log("[Playoffs CSV] marker:", fgCell, "=>", next)
         if (next) {
           flush()
           currentRound = next
@@ -400,7 +392,6 @@ function buildPlayoffsSectionsCsv(rows, cols, leagueKey) {
       continue
     }
 
-    // league filter only for team rows if league column exists
     if (kLeague && norm(r?.[kLeague]) !== leagueNorm) continue
     if (norm(team) === "bye") continue
 
@@ -412,7 +403,6 @@ function buildPlayoffsSectionsCsv(rows, cols, leagueKey) {
   const order = ["1st ROUND", "SEMIFINALS", "FINALS", "3RD PLACE"]
   sections.sort((a, b) => order.indexOf(a.round) - order.indexOf(b.round))
 
-  console.log("[Playoffs CSV] sections:", sections.map(s => `${s.round}:${s.pairs.length}`))
   return sections
 }
 
@@ -475,17 +465,18 @@ function StatChip({ value, tone }) {
   }
 
   const base = {
-    display: "inline-block",
-    minWidth: 70,
-    textAlign: "center",
-    padding: "6px 10px",
-    borderRadius: 10,
-    fontWeight: 800,
-    fontSize: 13,
-    letterSpacing: 0.2,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.14)",
-  }
+  display: "inline-block",
+  minWidth: 70,
+  textAlign: "center",
+  padding: "4px 10px",
+  borderRadius: 10,
+  fontWeight: 800,
+  fontSize: 13,
+  letterSpacing: 0.2,
+  lineHeight: 1.2,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(0,0,0,0.14)",
+}
 
   const toneStyle =
     tone === "a"
@@ -508,18 +499,27 @@ function MatchupCard({ a, b, teamKey, statKeys, round }) {
   return (
     <div className="card" style={{ padding: 0, overflow: "visible" }}>
       <div style={matchupHeader}>
-        <div>
-          <div style={{ fontWeight: 900, fontSize: 18 }}>
+        <div style={{ minWidth: 0, flex: "1 1 auto" }}>
+          <div
+            style={{
+              fontWeight: 900,
+              fontSize: 18,
+              lineHeight: 1.2,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              flexWrap: "wrap",
+            }}
+          >
             <Link to={teamHref(aName)} className="teamLinkHover" style={teamNameLink}>
               {aName}
-            </Link>{" "}
-            <span style={{ color: "#db7d12", fontWeight: 700 }}>vs</span>{" "}
+            </Link>
+            <span style={{ color: "#db7d12", fontWeight: 700 }}>vs</span>
             <Link to={teamHref(bName)} className="teamLinkHover" style={teamNameLink}>
               {bName}
             </Link>
           </div>
 
-          {/* ✅ ONLY green pill inside matchup */}
           {round ? (
             <div style={{ marginTop: 6 }}>
               <span style={roundPill}>{round}</span>
@@ -527,7 +527,16 @@ function MatchupCard({ a, b, teamKey, statKeys, round }) {
           ) : null}
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "nowrap",
+            justifyContent: "flex-end",
+            alignItems: "center",
+            flex: "0 0 auto",
+          }}
+        >
           <ScorePill label="W" value={w} tone="win" />
           <ScorePill label="L" value={l} tone="loss" />
           <ScorePill label="T" value={t} tone="tie" />
@@ -554,20 +563,27 @@ function MatchupCard({ a, b, teamKey, statKeys, round }) {
 
             return (
               <tr key={k} style={rowStyle(idx)}>
-                <td style={{ ...tdStyle, fontWeight: 900 }}>
+                <td style={{ ...matchupTdStyle, fontWeight: 900 }}>
                   {k}
                   {isLowerBetter(k) ? (
-                    <span style={{ marginLeft: 8, color: "var(--gnfc-muted)", fontWeight: 700, fontSize: 11 }}>
+                    <span
+                      style={{
+                        marginLeft: 8,
+                        color: "var(--gnfc-muted)",
+                        fontWeight: 700,
+                        fontSize: 11,
+                      }}
+                    >
                       (lower)
                     </span>
                   ) : null}
                 </td>
 
-                <td style={{ ...tdStyle, textAlign: "center" }}>
+                <td style={{ ...matchupTdStyle, textAlign: "center" }}>
                   <StatChip value={aVal} tone={aTone} />
                 </td>
 
-                <td style={{ ...tdStyle, textAlign: "center" }}>
+                <td style={{ ...matchupTdStyle, textAlign: "center" }}>
                   <StatChip value={bVal} tone={bTone} />
                 </td>
               </tr>
@@ -610,7 +626,6 @@ export default function LeaguePage() {
 
   const [view, setView] = useState("matchups") // "matchups" | "playouts" | "playoffs"
 
-  // fetch normal league (GViz)
   useEffect(() => {
     let alive = true
     ;(async () => {
@@ -637,7 +652,6 @@ export default function LeaguePage() {
     return () => { alive = false }
   }, [gid])
 
-  // fetch playoffs (CSV export so round marker rows are preserved)
   useEffect(() => {
     let alive = true
     ;(async () => {
@@ -650,12 +664,6 @@ export default function LeaguePage() {
         const text = await res.text()
 
         const csvRows = parseCsv(text)
-
-        console.log("=== PLAYOFFS RAW CSV first 20 rows ===")
-        console.log(csvRows.slice(0, 20))
-        console.log("=== END RAW CSV ===")
-
-        // headers are row 2 in sheet => index 1
         const parsed = csvToObjects(csvRows, 1)
 
         if (!alive) return
@@ -672,7 +680,6 @@ export default function LeaguePage() {
     return () => { alive = false }
   }, [leagueKey])
 
-  // fetch playouts (GViz)
   useEffect(() => {
     let alive = true
     ;(async () => {
@@ -698,7 +705,6 @@ export default function LeaguePage() {
     return () => { alive = false }
   }, [leagueKey])
 
-  // ✅ restore category standings above matchups
   const standingsBefore = useMemo(
     () => parseStandingsBeforeMatchup(allRows, cols),
     [allRows, cols]
@@ -734,6 +740,12 @@ export default function LeaguePage() {
 
     return { sections, teamKey: tk, statKeys: keys }
   }, [playoffsRows, playoffsCols, leagueKey])
+
+  const finalPair = useMemo(() => {
+    const finalsSection = playoffsSections.sections.find(sec => norm(sec.round) === "finals")
+    if (!finalsSection?.pairs?.length) return null
+    return finalsSection.pairs[0]
+  }, [playoffsSections])
 
   const { playoutPairs, playoutTeamKey, playoutStatKeys } = useMemo(() => {
     const cleaned = (playoutsRows || []).filter(r => !isEmptyRow(r))
@@ -798,68 +810,93 @@ export default function LeaguePage() {
 
         {!showingLoading && !showingError && (
           <>
-            {/* ✅ restored standings table */}
-            {standingsBefore && (
-              <>
-                <div className="sectionTitle" style={{ marginTop: 0 }}>
-                  <span className="badge">Standings</span>
-                  <span style={{ color: "var(--gnfc-muted)", fontSize: 13 }}>
-                    Before matchup • total statistics
-                  </span>
-                </div>
+            {(standingsBefore || finalPair) && (
+              <div
+              className="topSummaryGrid"
+              style={{
+                marginBottom: 14,
+                gridTemplateColumns: finalPair ? undefined : "1fr",
+              }}
+            >
+                {finalPair && (
+                  <div>
+                    <div className="sectionTitle" style={{ marginTop: 0 }}>
+                      <span className="badge">League Final</span>
+                    </div>
 
-                <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 14 }}>
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1050 }}>
-                      <thead>
-                        <tr style={{ background: "rgba(0,0,0,0.18)" }}>
-                          {standingsBefore.headers.map((h, idx) => (
-                            <th
-                              key={h + idx}
-                              style={{
-                                ...thStyle,
-                                textAlign: idx <= 1 ? "left" : "right",
-                                width: idx === 0 ? 56 : idx === 1 ? 260 : "auto",
-                              }}
-                            >
-                              {h}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
+                    <MatchupCard
+                      a={finalPair[0]}
+                      b={finalPair[1]}
+                      round="FINALS"
+                      teamKey={playoffsSections.teamKey}
+                      statKeys={playoffsSections.statKeys}
+                    />
+                  </div>
+                )}
 
-                      <tbody>
-                        {standingsBefore.rows.map((r, i) => (
-                          <tr key={(r?.[1] ?? "row") + i} style={rowStyle(i)}>
-                            {r.map((v, idx) => {
-                              const isTeam = idx === 1
-                              return (
-                                <td
-                                  key={idx}
+                {standingsBefore && (
+                  <div>
+                    <div className="sectionTitle" style={{ marginTop: 0 }}>
+                      <span className="badge">Standings</span>
+                      <span style={{ color: "var(--gnfc-muted)", fontSize: 13 }}>
+                        Before matchup • total statistics
+                      </span>
+                    </div>
+
+                    <div className="card" style={{ padding: 0, overflow: "hidden", height: "100%" }}>
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1050 }}>
+                          <thead>
+                            <tr style={{ background: "rgba(0,0,0,0.18)" }}>
+                              {standingsBefore.headers.map((h, idx) => (
+                                <th
+                                  key={h + idx}
                                   style={{
-                                    ...tdStyle,
+                                    ...thStyle,
                                     textAlign: idx <= 1 ? "left" : "right",
-                                    fontWeight: idx === 1 ? 900 : 700,
-                                    color: idx === 0 ? "var(--gnfc-muted)" : undefined,
+                                    width: idx === 0 ? 56 : idx === 1 ? 260 : "auto",
                                   }}
                                 >
-                                  {isTeam ? (
-                                    <Link to={teamHref(v)} className="teamLinkHover" style={teamLinkInline}>
-                                      {cell(v)}
-                                    </Link>
-                                  ) : (
-                                    cell(v)
-                                  )}
-                                </td>
-                              )
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                                  {h}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+
+                          <tbody>
+                            {standingsBefore.rows.map((r, i) => (
+                              <tr key={(r?.[1] ?? "row") + i} style={rowStyle(i)}>
+                                {r.map((v, idx) => {
+                                  const isTeam = idx === 1
+                                  return (
+                                    <td
+                                      key={idx}
+                                      style={{
+                                        ...tdStyle,
+                                        textAlign: idx <= 1 ? "left" : "right",
+                                        fontWeight: idx === 1 ? 900 : 700,
+                                        color: idx === 0 ? "var(--gnfc-muted)" : undefined,
+                                      }}
+                                    >
+                                      {isTeam ? (
+                                        <Link to={teamHref(v)} className="teamLinkHover" style={teamLinkInline}>
+                                          {cell(v)}
+                                        </Link>
+                                      ) : (
+                                        cell(v)
+                                      )}
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </>
+                )}
+              </div>
             )}
 
             <div className="sectionTitle" style={{ alignItems: "center", gap: 12 }}>
@@ -913,7 +950,6 @@ export default function LeaguePage() {
               </div>
             ) : (
               <div className="matchupGrid">
-                {/* ✅ no orange section pills, only green pill inside each matchup */}
                 {playoffsSections.sections.flatMap(sec =>
                   sec.pairs.map(([a, b], idx) => (
                     <MatchupCard
@@ -933,16 +969,31 @@ export default function LeaguePage() {
       </div>
 
       <style>{`
+        .topSummaryGrid{
+          display:grid;
+          grid-template-columns: 1fr;
+          gap: 14px;
+          align-items:start;
+        }
+
         .matchupGrid{
           display:grid;
           grid-template-columns: 1fr;
           gap: 14px;
         }
+
+        @media (min-width: 1100px){
+          .topSummaryGrid{
+            grid-template-columns: minmax(360px, 0.95fr) minmax(0, 1.45fr);
+          }
+        }
+
         @media (min-width: 860px){
           .matchupGrid{
             grid-template-columns: 1fr 1fr;
           }
         }
+
         @media (min-width: 1250px){
           .matchupGrid{
             grid-template-columns: 1fr 1fr 1fr;
@@ -967,9 +1018,10 @@ const matchupHeader = {
   alignItems: "center",
   justifyContent: "space-between",
   gap: 12,
-  padding: "14px 14px",
+  padding: "12px 14px",
   borderBottom: "1px solid rgba(255,255,255,0.10)",
   background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.10))",
+  flexWrap: "nowrap",
 }
 
 const teamLinkInline = {
@@ -1013,6 +1065,13 @@ const leagueSelect = {
 
 const tdStyle = {
   padding: "12px 12px",
+  borderBottom: "1px solid rgba(255,255,255,0.08)",
+  fontSize: 14,
+}
+
+const matchupTdStyle = {
+  padding: "9px 12px",
+  height: 49,
   borderBottom: "1px solid rgba(255,255,255,0.08)",
   fontSize: 14,
 }

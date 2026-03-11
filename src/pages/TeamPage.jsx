@@ -360,35 +360,35 @@ function cupRoundFromTitle(v) {
   const t = normalizeLoose(v)
   if (!t) return ""
 
-  if (t.includes("qualifying round 1")) return "1st R."
-  if (t.includes("qualification round 1")) return "1st R."
-  if (t.includes("1st round")) return "1st R."
-  if (t.includes("first round")) return "1st R."
+  if (t.includes("qualifying round 1")) return "1st Round"
+  if (t.includes("qualification round 1")) return "1st Round"
+  if (t.includes("1st round")) return "1st Round"
+  if (t.includes("first round")) return "1st Round"
 
-  if (t.includes("qualifying round 2")) return "2nd R."
-  if (t.includes("qualification round 2")) return "2nd R."
-  if (t.includes("2nd round")) return "2nd R."
-  if (t.includes("second round")) return "2nd R."
+  if (t.includes("qualifying round 2")) return "2nd Round"
+  if (t.includes("qualification round 2")) return "2nd Round"
+  if (t.includes("2nd round")) return "2nd Round"
+  if (t.includes("second round")) return "2nd Round"
 
-  if (t.includes("qualifying round 3")) return "3rd R."
-  if (t.includes("qualification round 3")) return "3rd R."
-  if (t.includes("3rd round")) return "3rd R."
-  if (t.includes("third round")) return "3rd R."
+  if (t.includes("qualifying round 3")) return "3rd Round"
+  if (t.includes("qualification round 3")) return "3rd Round"
+  if (t.includes("3rd round")) return "3rd Round"
+  if (t.includes("third round")) return "3rd Round"
 
-  if (t.includes("round of 32") || t.includes("last 32")) return "32"
-  if (t.includes("round of 16") || t.includes("last 16")) return "16"
-  if (t.includes("quarter")) return "8"
-  if (t.includes("semi")) return "4"
+  if (t.includes("round of 32") || t.includes("last 32")) return "Last 32"
+  if (t.includes("round of 16") || t.includes("last 16")) return "Last 16"
+  if (t.includes("quarter")) return "Last 8"
+  if (t.includes("semi")) return "Semifinals"
   if (t.includes("final")) return "Final"
 
   // if your current cup still uses "Week X" titles, map them explicitly
-  if (t.includes("week 1")) return "1st R."
-  if (t.includes("week 2")) return "2nd R."
-  if (t.includes("week 3")) return "3rd R."
-  if (t.includes("week 4")) return "32"
-  if (t.includes("week 5")) return "16"
-  if (t.includes("week 6")) return "8"
-  if (t.includes("week 7")) return "4"
+  if (t.includes("week 1")) return "1st Round"
+  if (t.includes("week 2")) return "2nd Round"
+  if (t.includes("week 3")) return "3rd Round"
+  if (t.includes("week 4")) return "Last 32"
+  if (t.includes("week 5")) return "Last 16"
+  if (t.includes("week 6")) return "Last 8"
+  if (t.includes("week 7")) return "Semifinals"
   if (t.includes("week 8")) return "Final"
 
   return ""
@@ -410,19 +410,19 @@ function isWinnerRowForTeam(row, teamName) {
 
 function stagePriority(stage) {
   switch (s(stage)) {
-    case "1st R.":
+    case "1st Round":
       return 1
-    case "2nd R.":
+    case "2nd Round":
       return 2
-    case "3rd R.":
+    case "3rd Round":
       return 3
-    case "32":
+    case "Last 32":
       return 4
-    case "16":
+    case "Last 16":
       return 5
-    case "8":
+    case "Last 8":
       return 6
-    case "4":
+    case "Semifinals":
       return 7
     case "Final":
       return 8

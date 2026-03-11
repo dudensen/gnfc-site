@@ -2,15 +2,33 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useTeams } from "../hooks/useTeams"
+import { RANKING_SHEET_ID, RANKING_GIDS } from "../config/rankingGids"
 
-/* ----------------------------- general sheet source ----------------------------- */
+/* ----------------------------- sheet sources ----------------------------- */
 
 const GENERAL_SHEET_ID = "1Z8EbGi1rGDhg7dAQoPypJ2FTUQoMO730yx3Mm-cEMow"
 const GENERAL_GID = "2143242587"
 
+const OVERVIEW_SHEET_ID = "1GGSJSL2aJ2UEXpHGU7NDOdN0CeOHeK0HzuxXOGqOUnA"
+const OVERVIEW_GID = "532207451"
+
+const TROPHY_IMAGES = {
+  leagueA: "/awards/league-winner-a.webp",
+  leagueB: "/awards/league-winner-b.webp",
+  leagueG: "/awards/league-winner-g.webp",
+  cl: "/awards/champions-league.webp",
+  cup: "/awards/cup.webp",
+}
+
 function csvExportUrl(sheetId, gid) {
   return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`
 }
+
+/* ----------------------------- history tabs ----------------------------- */
+
+const HISTORY_YEARS = Object.entries(RANKING_GIDS)
+  .filter(([key]) => /^\d{4}$/.test(String(key)))
+  .sort((a, b) => Number(b[0]) - Number(a[0]))
 
 /* ----------------------------- tiny utils ----------------------------- */
 
@@ -20,6 +38,16 @@ function s(x) {
 
 function norm(x) {
   return s(x).toLowerCase().replace(/\s+/g, " ")
+}
+
+function normalizeLoose(x) {
+  return s(x)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}%]+/gu, " ")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
 }
 
 function isJunkKey(k) {
@@ -57,28 +85,77 @@ function hasLetters(x) {
   return /[A-Za-zΑ-Ωα-ω]/.test(s(x))
 }
 
-function getPercentStat(raw, baseKey) {
-  const values = []
+function looksFilledValue(v) {
+  const x = s(v)
+  if (!x) return false
+  if (["—", "-", "0", "0.0"].includes(x)) return false
+  return true
+}
 
-  for (let i = 1; i <= 6; i++) {
-    const key = i === 1 ? baseKey : `${baseKey}__${i}`
-    const value = s(raw?.[key])
-    if (value) values.push(value)
-  }
+function toNumberMaybe(v) {
+  const x = s(v).replace(",", ".").replace(/[^\d.-]/g, "")
+  if (!x) return null
+  const n = Number(x)
+  return Number.isFinite(n) ? n : null
+}
 
-  if (!values.length) return ""
+function yearsText(years) {
+  return years.join(", ")
+}
 
-  // Prefer values that look like real percentages/stat lines:
-  // examples: 45.8, 45.8%, 81.4, 81.4%
-  const percentLike =
-    values.find((v) => /%/.test(v)) ||
-    values.find((v) => /[.,]/.test(v)) ||
-    values.find((v) => {
-      const n = Number(String(v).replace("%", "").replace(",", "."))
-      return Number.isFinite(n) && n >= 0 && n <= 100
-    })
+function uniqSortedYears(values) {
+  return [...new Set(values.map(Number).filter((x) => Number.isFinite(x)))].sort((a, b) => a - b)
+}
 
-  return percentLike || values[0]
+/* ----------------------------- scoring helpers ----------------------------- */
+
+function placementScore(value) {
+  const x = normalizeLoose(value)
+  if (!x) return -1
+
+  const n = toNumberMaybe(x)
+  if (n != null) return n
+
+  if (x.includes("winner")) return 100
+  if (x.includes("champion")) return 90
+  if (x.includes("final")) return 80
+  if (x.includes("semifinal")) return 70
+  if (x.includes("quarter")) return 60
+  if (x.includes("16")) return 50
+  if (x.includes("32")) return 40
+
+  return 0
+}
+
+function playoffPlacementScore(value) {
+  const x = normalizeLoose(value)
+  if (!x) return -1
+
+  if (x.includes("winner")) return 100
+  if (x.includes("champion")) return 100
+  if (x.includes("final")) return 90
+  if (x.includes("semifinal")) return 80
+  if (x.includes("quarter")) return 70
+  if (x.includes("16")) return 60
+  if (x.includes("32")) return 50
+
+  const n = toNumberMaybe(x)
+  if (n != null) return n
+
+  return 0
+}
+
+function bestOfCandidates(candidates, scorer) {
+  if (!candidates.length) return null
+
+  return candidates
+    .slice()
+    .sort((a, b) => {
+      const sa = scorer(a)
+      const sb = scorer(b)
+      if (sb !== sa) return sb - sa
+      return Number(b.year) - Number(a.year)
+    })[0]
 }
 
 /* ----------------------------- csv parser ----------------------------- */
@@ -147,17 +224,13 @@ function parseCsv(text) {
   return rows
 }
 
-/* ----------------------------- general sheet parsing ----------------------------- */
+/* ----------------------------- parser helpers ----------------------------- */
 
-function parseGeneralSheet(rows) {
-  if (!rows?.length || rows.length < 2) {
-    throw new Error("General sheet CSV is missing rows.")
-  }
-
+function findHeaderRow(rows, maxScan = 10) {
   let headerRowIdx = -1
   let idxTeam = -1
 
-  for (let r = 0; r < Math.min(rows.length, 8); r++) {
+  for (let r = 0; r < Math.min(rows.length, maxScan); r++) {
     const row = rows[r] || []
     const hit = row.findIndex((cell) => norm(cell) === "team")
     if (hit >= 0) {
@@ -166,6 +239,16 @@ function parseGeneralSheet(rows) {
       break
     }
   }
+
+  return { headerRowIdx, idxTeam }
+}
+
+function parseGeneralSheet(rows) {
+  if (!rows?.length || rows.length < 2) {
+    throw new Error("General sheet CSV is missing rows.")
+  }
+
+  const { headerRowIdx, idxTeam } = findHeaderRow(rows, 8)
 
   if (headerRowIdx < 0 || idxTeam < 0) {
     throw new Error("Could not find Team column in general sheet.")
@@ -198,17 +281,23 @@ function parseGeneralSheet(rows) {
   return { cols, data, idxTeam }
 }
 
-function normalizeLoose(x) {
-  return s(x)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, " ")
+function parseSimpleSheet(rows) {
+  if (!rows?.length || rows.length < 2) return null
+
+  const { headerRowIdx, idxTeam } = findHeaderRow(rows, 10)
+  if (headerRowIdx < 0 || idxTeam < 0) return null
+
+  const headerRow = rows[headerRowIdx] || []
+  const headers = headerRow.map((h) => s(h))
+  const data = rows.slice(headerRowIdx + 1).filter((row) => {
+    const team = s(row[idxTeam])
+    return team && hasLetters(team)
+  })
+
+  return { headers, data, idxTeam }
 }
 
-function findGeneralRowForTeam(parsed, teamName) {
+function findRowForTeam(parsed, teamName) {
   if (!parsed || !teamName) return null
 
   const targetExact = norm(teamName)
@@ -229,6 +318,49 @@ function findGeneralRowForTeam(parsed, teamName) {
   return hit
 }
 
+function findColumnIndexes(headers, labelVariants) {
+  const wanted = labelVariants.map((x) => normalizeLoose(x))
+  const hits = []
+
+  headers.forEach((header, idx) => {
+    const h = normalizeLoose(header)
+    if (wanted.some((w) => h === w || h.includes(w))) {
+      hits.push(idx)
+    }
+  })
+
+  return [...new Set(hits)]
+}
+
+function getFirstFilledFromLabels(headers, row, labelVariants) {
+  const indexes = findColumnIndexes(headers, labelVariants)
+  for (const idx of indexes) {
+    const value = s(row[idx])
+    if (looksFilledValue(value)) return value
+  }
+  return ""
+}
+
+/* ----------------------------- icons ----------------------------- */
+
+function AwardTrophy({ type, label, href }) {
+  const src = TROPHY_IMAGES[type]
+
+  return (
+    <a
+      href={href || src || "#"}
+      target="_blank"
+      rel="noreferrer"
+      title={label}
+      style={awardTrophyLink}
+    >
+      <img src={src} alt={label} style={awardTrophyImg} />
+    </a>
+  )
+}
+
+/* ----------------------------- main component ----------------------------- */
+
 export default function TeamPage() {
   const navigate = useNavigate()
   const { teamName } = useParams()
@@ -238,6 +370,10 @@ export default function TeamPage() {
   const [selectedTeam, setSelectedTeam] = useState("")
   const [generalParsed, setGeneralParsed] = useState(null)
   const [generalError, setGeneralError] = useState("")
+  const [historyParsed, setHistoryParsed] = useState([])
+  const [historyError, setHistoryError] = useState("")
+  const [overviewParsed, setOverviewParsed] = useState(null)
+  const [overviewError, setOverviewError] = useState("")
 
   const team = useMemo(() => {
     const needle = norm(decodedName)
@@ -277,9 +413,260 @@ export default function TeamPage() {
     }
   }, [])
 
+  useEffect(() => {
+    let alive = true
+
+    async function loadHistorySheets() {
+      try {
+        setHistoryError("")
+
+        const results = await Promise.all(
+          HISTORY_YEARS.map(async ([year, gid]) => {
+            const res = await fetch(csvExportUrl(RANKING_SHEET_ID, gid))
+            const text = await res.text()
+            if (!res.ok) throw new Error(`History sheet ${year} fetch failed: ${res.status} ${res.statusText}`)
+
+            const rows = parseCsv(text)
+            const parsed = parseSimpleSheet(rows)
+
+            return { year, gid, parsed }
+          })
+        )
+
+        if (alive) setHistoryParsed(results.filter((x) => x?.parsed))
+      } catch (e) {
+        if (alive) {
+          setHistoryParsed([])
+          setHistoryError(e?.message || String(e))
+        }
+      }
+    }
+
+    loadHistorySheets()
+
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+
+    async function loadOverviewSheet() {
+      try {
+        setOverviewError("")
+        const res = await fetch(csvExportUrl(OVERVIEW_SHEET_ID, OVERVIEW_GID))
+        const text = await res.text()
+        if (!res.ok) throw new Error(`Overview sheet fetch failed: ${res.status} ${res.statusText}`)
+
+        const rows = parseCsv(text)
+        const parsed = parseSimpleSheet(rows)
+
+        if (alive) setOverviewParsed(parsed)
+      } catch (e) {
+        if (alive) {
+          setOverviewParsed(null)
+          setOverviewError(e?.message || String(e))
+        }
+      }
+    }
+
+    loadOverviewSheet()
+
+    return () => {
+      alive = false
+    }
+  }, [])
+
   const generalRow = useMemo(() => {
-    return findGeneralRowForTeam(generalParsed, team?.team)
+    return findRowForTeam(generalParsed, team?.team)
   }, [generalParsed, team?.team])
+
+  const awardsSummary = useMemo(() => {
+    if (!team?.team || !overviewParsed) return []
+
+    const row = findRowForTeam(overviewParsed, team.team)
+    if (!row) return []
+
+    const rawAwards = [
+      {
+        key: "leagueWinnerA",
+        label: "League Winner A",
+        value: getFirstFilledFromLabels(overviewParsed.headers, row, ["League Winner A"]),
+        iconType: "leagueA",
+      },
+      {
+        key: "leagueWinnerB",
+        label: "League Winner B",
+        value: getFirstFilledFromLabels(overviewParsed.headers, row, ["League Winner B"]),
+        iconType: "leagueB",
+      },
+      {
+        key: "leagueWinnerG",
+        label: "League Winner Γ",
+        value: getFirstFilledFromLabels(overviewParsed.headers, row, ["League Winner Γ"]),
+        iconType: "leagueG",
+      },
+      {
+        key: "championsLeague",
+        label: "Champions League",
+        value: getFirstFilledFromLabels(overviewParsed.headers, row, ["Champions League"]),
+        iconType: "cl",
+      },
+      {
+        key: "cup",
+        label: "Cup",
+        value: getFirstFilledFromLabels(overviewParsed.headers, row, ["Cup"]),
+        iconType: "cup",
+      },
+    ]
+
+    return rawAwards
+      .map((item) => {
+        const num = toNumberMaybe(item.value)
+        return {
+          ...item,
+          count: num != null ? num : 0,
+        }
+      })
+      .filter((item) => item.count > 0)
+  }, [overviewParsed, team?.team])
+
+  const bestPerformance = useMemo(() => {
+    if (!team?.team || !historyParsed.length) return []
+
+    const leaguePointsCandidates = []
+    const championsLeagueCandidates = []
+    const cupCandidates = []
+    const playoffsCandidates = []
+
+    for (const { year, parsed } of historyParsed) {
+      const row = findRowForTeam(parsed, team.team)
+      if (!row) continue
+
+      const leaguePoints = getFirstFilledFromLabels(parsed.headers, row, ["League points"])
+      const cl = getFirstFilledFromLabels(parsed.headers, row, ["Champions League"])
+      const cup = getFirstFilledFromLabels(parsed.headers, row, ["Cup"])
+      const playoffs = getFirstFilledFromLabels(parsed.headers, row, ["Playoffs"])
+      const league = getFirstFilledFromLabels(parsed.headers, row, ["League"])
+
+      const lpNum = toNumberMaybe(leaguePoints)
+      if (lpNum != null) {
+        leaguePointsCandidates.push({
+          value: String(lpNum),
+          year: Number(year),
+          score: lpNum,
+        })
+      }
+
+      if (looksFilledValue(cl)) {
+        championsLeagueCandidates.push({
+          value: cl,
+          year: Number(year),
+        })
+      }
+
+      if (looksFilledValue(cup)) {
+        cupCandidates.push({
+          value: cup,
+          year: Number(year),
+        })
+      }
+
+      if (looksFilledValue(playoffs)) {
+        playoffsCandidates.push({
+          value: playoffs,
+          year: Number(year),
+          league: s(league),
+        })
+      }
+    }
+
+    const bestLeaguePoints = bestOfCandidates(leaguePointsCandidates, (x) => x.score)
+    const bestChampionsLeague = bestOfCandidates(championsLeagueCandidates, (x) => placementScore(x.value))
+    const bestCup = bestOfCandidates(cupCandidates, (x) => placementScore(x.value))
+    const bestLeaguePlacement = bestOfCandidates(playoffsCandidates, (x) => playoffPlacementScore(x.value))
+
+    const bestLeaguePlacementScore = bestLeaguePlacement
+      ? playoffPlacementScore(bestLeaguePlacement.value)
+      : null
+
+    const sameBestLeaguePlacementEntries =
+      bestLeaguePlacementScore == null
+        ? []
+        : playoffsCandidates
+            .filter((x) => playoffPlacementScore(x.value) === bestLeaguePlacementScore)
+            .slice()
+            .sort((a, b) => a.year - b.year)
+
+    const divisionWinningEntries =
+      bestLeaguePlacementScore == null
+        ? []
+        : playoffsCandidates
+            .filter((x) => {
+              const score = playoffPlacementScore(x.value)
+              const label = normalizeLoose(x.value)
+              return score === bestLeaguePlacementScore && label.includes("champion")
+            })
+            .slice()
+            .sort((a, b) => a.year - b.year)
+
+    function bestLeaguePlacementDisplay(entry, entries) {
+      if (!entry) return ""
+
+      const label = normalizeLoose(entry.value)
+      const isWinner = label.includes("winner")
+
+      if (isWinner) {
+        const parts = entries.map((x) => {
+          const leaguePart = x.league ? `${x.league} ` : ""
+          return `${leaguePart}(${x.year})`
+        })
+        return `${entry.value} - ${parts.join(", ")}`
+      }
+
+      return `${entry.value} (${yearsText(uniqSortedYears(entries.map((x) => x.year)))})`
+    }
+
+    return [
+      bestLeaguePoints
+        ? {
+            label: "Most League Points",
+            display: `${bestLeaguePoints.value} (${bestLeaguePoints.year})`,
+          }
+        : null,
+
+      bestChampionsLeague
+        ? {
+            label: "Best Champions League Placement",
+            display: `${bestChampionsLeague.value} (${bestChampionsLeague.year})`,
+          }
+        : null,
+
+      bestCup
+        ? {
+            label: "Best Cup Placement",
+            display: `${bestCup.value} (${bestCup.year})`,
+          }
+        : null,
+
+      bestLeaguePlacement
+        ? {
+            label: "Best League Placement",
+            display: bestLeaguePlacementDisplay(bestLeaguePlacement, sameBestLeaguePlacementEntries),
+          }
+        : null,
+
+      divisionWinningEntries.length
+        ? {
+            label: "Best Division",
+            display: `${bestLeaguePlacement.value} (${yearsText(
+              uniqSortedYears(divisionWinningEntries.map((x) => x.year))
+            )})`,
+          }
+        : null,
+    ].filter(Boolean)
+  }, [historyParsed, team?.team])
 
   const leagueTeams = useMemo(() => {
     const league = s(team?.league)
@@ -318,22 +705,22 @@ export default function TeamPage() {
   }, [team])
 
   const generalPerformanceStats = useMemo(() => {
-  if (!team?.raw) return []
+    if (!team?.raw) return []
 
-  const raw = team.raw
-  return [
-    { label: "GP", value: raw["GP"] },
-    { label: "FG%", value: raw["GENERAL STATISTICS FG%"] ?? raw["FG%"] },
-    { label: "3P", value: raw["3P"] },
-    { label: "FT%", value: raw["FT%"] },
-    { label: "PTS", value: raw["PTS"] },
-    { label: "REB", value: raw["REB"] },
-    { label: "AST", value: raw["AST"] },
-    { label: "ST", value: raw["ST"] },
-    { label: "BLK", value: raw["BLK"] },
-    { label: "TO", value: raw["TO"] },
-  ].filter((x) => !isJunkKey(x.label))
-}, [team])
+    const raw = team.raw
+    return [
+      { label: "GP", value: raw["GP"] },
+      { label: "FG%", value: raw["GENERAL STATISTICS FG%"] ?? raw["FG%"] },
+      { label: "3P", value: raw["3P"] },
+      { label: "FT%", value: raw["FT%"] },
+      { label: "PTS", value: raw["PTS"] },
+      { label: "REB", value: raw["REB"] },
+      { label: "AST", value: raw["AST"] },
+      { label: "ST", value: raw["ST"] },
+      { label: "BLK", value: raw["BLK"] },
+      { label: "TO", value: raw["TO"] },
+    ].filter((x) => !isJunkKey(x.label))
+  }, [team])
 
   const pointsSystemStats = useMemo(() => {
     if (!generalParsed || !generalRow) return []
@@ -351,7 +738,6 @@ export default function TeamPage() {
     ]
 
     const rankLike = new Set(["general standing"])
-
     const byLabel = new Map()
 
     parsedLoop: for (const c of generalParsed.cols) {
@@ -459,77 +845,168 @@ export default function TeamPage() {
 
         {!loading && !error && team && (
           <>
-            <div className="card" style={{ padding: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                <div>
-                  <div style={{ fontSize: 24, fontWeight: 1000, letterSpacing: 0.3 }}>{team.team}</div>
-                  <div style={{ marginTop: 6, color: "var(--gnfc-muted)", fontSize: 14 }}>
-                    Manager:{" "}
-                    <span style={{ color: "var(--gnfc-text)", fontWeight: 800 }}>{team.manager || "—"}</span>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+                gap: 14,
+                alignItems: "stretch",
+              }}
+            >
+              <div className="card" style={{ padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontSize: 24, fontWeight: 1000, letterSpacing: 0.3 }}>{team.team}</div>
+                    <div style={{ marginTop: 6, color: "var(--gnfc-muted)", fontSize: 14 }}>
+                      Manager:{" "}
+                      <span style={{ color: "var(--gnfc-text)", fontWeight: 800 }}>
+                        {team.manager || "—"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
+                    <Link
+                      to={`/division/${encodeURIComponent(team.division)}`}
+                      className="badge"
+                      style={{ textDecoration: "none" }}
+                    >
+                      Division {team.division}
+                    </Link>
+
+                    <Link
+                      to={`/league/${encodeURIComponent(team.league)}`}
+                      className="badge"
+                      style={{ textDecoration: "none" }}
+                    >
+                      {team.league}
+                    </Link>
                   </div>
                 </div>
 
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
-                  <Link
-                    to={`/division/${encodeURIComponent(team.division)}`}
-                    className="badge"
-                    style={{ textDecoration: "none" }}
-                  >
-                    Division {team.division}
-                  </Link>
+                <div style={{ fontSize: 18, fontWeight: 900, marginTop: 16 }}>Current Year</div>
 
-                  <Link
-                    to={`/league/${encodeURIComponent(team.league)}`}
-                    className="badge"
-                    style={{ textDecoration: "none" }}
-                  >
-                    {team.league}
-                  </Link>
+                <div
+                  style={{
+                    marginTop: 14,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  <div style={miniBox}>
+                    <div style={miniLabel}>League Ranking</div>
+                    <div style={miniValue}>{val(team.leagueRanking)}</div>
+                  </div>
+
+                  <div style={miniBox}>
+                    <div style={miniLabel}>League W%</div>
+                    <div style={miniValue}>{val(leagueW)}</div>
+                  </div>
+
+                  <div style={miniBox}>
+                    <div style={miniLabel}>Category Standing</div>
+                    <div style={miniValue}>{val(getFirst(team.raw, "Category Standing"))}</div>
+                  </div>
+
+                  <div style={miniBox}>
+                    <div style={miniLabel}>Category Next Season</div>
+                    <div style={miniValue}>{val(getFirst(team.raw, "Category Next Season"))}</div>
+                  </div>
+
+                  <div style={miniBox}>
+                    <div style={miniLabel}>Playoffs</div>
+                    <div style={miniValue}>{val(getFirst(team.raw, "Playoffs"))}</div>
+                  </div>
+
+                  <div style={miniBox}>
+                    <div style={miniLabel}>Champions League</div>
+                    <div style={miniValue}>{val(getFirst(team.raw, "Champions League"))}</div>
+                  </div>
+
+                  <div style={miniBox}>
+                    <div style={miniLabel}>Cup</div>
+                    <div style={miniValue}>{val(getFirst(team.raw, "Cup"))}</div>
+                  </div>
                 </div>
               </div>
 
-              <div
-                style={{
-                  marginTop: 14,
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                  gap: 12,
-                }}
-              >
-                <div style={miniBox}>
-                  <div style={miniLabel}>League Ranking</div>
-                  <div style={miniValue}>{val(team.leagueRanking)}</div>
+              <div className="card" style={{ padding: 16 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    alignItems: "baseline",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ fontSize: 18, fontWeight: 900 }}>Awards</div>
+                  <div style={{ fontSize: 12, color: "var(--gnfc-muted)" }}>Career trophy cabinet</div>
                 </div>
 
-                <div style={miniBox}>
-                  <div style={miniLabel}>League W%</div>
-                  <div style={miniValue}>{val(leagueW)}</div>
+                {overviewError ? (
+                <div style={messageBoxStyle(12)}>{overviewError}</div>
+              ) : awardsSummary.length ? (
+                <div style={awardsSingleBox}>
+                  <div style={awardsIconsRow}>
+                    {awardsSummary.map((item) => (
+                      <div key={item.key} style={awardMiniItem}>
+                        <div style={awardMiniTrophiesWrap}>
+                          {Array.from({ length: item.count }).map((_, idx) => (
+                            <AwardTrophy
+                              key={`${item.key}-${idx}`}
+                              type={item.iconType}
+                              label={item.label}
+                              href={TROPHY_IMAGES[item.iconType]}
+                            />
+                          ))}
+                        </div>
+
+                        <div style={awardMiniLabel}>{item.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div style={messageBoxStyle(12)}>No awards found for this team.</div>
+              )}
+
+                <div
+                  style={{
+                    marginTop: 18,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    alignItems: "baseline",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ fontSize: 18, fontWeight: 900 }}>Best Performances</div>
+                  <div style={{ fontSize: 12, color: "var(--gnfc-muted)" }}>Best historical results</div>
                 </div>
 
-                <div style={miniBox}>
-                  <div style={miniLabel}>Category Standing</div>
-                  <div style={miniValue}>{val(getFirst(team.raw, "Category Standing"))}</div>
-                </div>
-
-                <div style={miniBox}>
-                  <div style={miniLabel}>Category Next Season</div>
-                  <div style={miniValue}>{val(getFirst(team.raw, "Category Next Season"))}</div>
-                </div>
-
-                <div style={miniBox}>
-                  <div style={miniLabel}>Playoffs</div>
-                  <div style={miniValue}>{val(getFirst(team.raw, "Playoffs"))}</div>
-                </div>
-
-                <div style={miniBox}>
-                  <div style={miniLabel}>Champions League</div>
-                  <div style={miniValue}>{val(getFirst(team.raw, "Champions League"))}</div>
-                </div>
-
-                <div style={miniBox}>
-                  <div style={miniLabel}>Cup</div>
-                  <div style={miniValue}>{val(getFirst(team.raw, "Cup"))}</div>
-                </div>
+                {historyError ? (
+                  <div style={messageBoxStyle(14)}>{historyError}</div>
+                ) : bestPerformance.length ? (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                      gap: 12,
+                    }}
+                  >
+                    {bestPerformance.map((item) => (
+                      <div key={item.label} style={miniBox}>
+                        <div style={miniLabel}>{item.label}</div>
+                        <div style={miniValue}>{item.display}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={messageBoxStyle(14)}>No history data found for this team.</div>
+                )}
               </div>
             </div>
 
@@ -708,6 +1185,20 @@ export default function TeamPage() {
   )
 }
 
+/* ----------------------------- styles ----------------------------- */
+
+function messageBoxStyle(marginTop = 12) {
+  return {
+    marginTop,
+    border: "1px solid rgba(255,255,255,0.10)",
+    borderRadius: 14,
+    padding: 12,
+    background: "rgba(0,0,0,0.12)",
+    color: "var(--gnfc-muted)",
+    fontWeight: 700,
+  }
+}
+
 const teamSelect = {
   height: 38,
   borderRadius: 12,
@@ -738,4 +1229,63 @@ const miniValue = {
   marginTop: 6,
   fontSize: 18,
   fontWeight: 1000,
+}
+
+const awardsSingleBox = {
+  marginTop: 12,
+  border: "2px solid rgba(249, 115, 22, 0.55)",
+  borderRadius: 16,
+  padding: 14,
+  background: "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,248,240,0.96))",
+  boxShadow: "0 10px 24px rgba(249, 115, 22, 0.10), inset 0 1px 0 rgba(255,255,255,0.85)",
+}
+
+const awardsIconsRow = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: 16,
+  alignItems: "start",
+}
+
+const awardMiniItem = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  textAlign: "center",
+  gap: 8,
+}
+
+const awardMiniTrophiesWrap = {
+  display: "flex",
+  flexWrap: "wrap",
+  justifyContent: "center",
+  gap: 8,
+  minHeight: 58,
+}
+
+const awardMiniLabel = {
+  fontSize: 11,
+  color: "#7c2d12",
+  fontWeight: 900,
+  lineHeight: 1.15,
+} 
+
+const awardTrophyLink = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textDecoration: "none",
+  width: 52,
+  height: 52,
+  borderRadius: 12,
+  background: "rgba(255,255,255,0.9)",
+  border: "1px solid rgba(249, 115, 22, 0.22)",
+  boxShadow: "0 4px 10px rgba(0,0,0,0.06)",
+}
+
+const awardTrophyImg = {
+  width: 42,
+  height: 42,
+  objectFit: "contain",
+  display: "block",
 }

@@ -326,22 +326,31 @@ function findRowForTeam(parsed, teamName) {
   return hit
 }
 
-function findColumnIndexes(headers, labelVariants) {
+function findColumnIndexes(headers, labelVariants, { exactOnly = false } = {}) {
   const wanted = labelVariants.map((x) => normalizeLoose(x))
-  const hits = []
+
+  const exactHits = []
+  const fuzzyHits = []
 
   headers.forEach((header, idx) => {
     const h = normalizeLoose(header)
-    if (wanted.some((w) => h === w || h.includes(w))) {
-      hits.push(idx)
+    if (!h) return
+
+    if (wanted.some((w) => h === w)) {
+      exactHits.push(idx)
+      return
+    }
+
+    if (!exactOnly && wanted.some((w) => h.includes(w))) {
+      fuzzyHits.push(idx)
     }
   })
 
-  return [...new Set(hits)]
+  return [...new Set([...exactHits, ...fuzzyHits])]
 }
 
-function getFirstFilledFromLabels(headers, row, labelVariants) {
-  const indexes = findColumnIndexes(headers, labelVariants)
+function getFirstFilledFromLabels(headers, row, labelVariants, options = {}) {
+  const indexes = findColumnIndexes(headers, labelVariants, options)
   for (const idx of indexes) {
     const value = s(row[idx])
     if (looksFilledValue(value)) return value
@@ -719,7 +728,7 @@ export default function TeamPage() {
       const cl = getFirstFilledFromLabels(parsed.headers, row, ["Champions League"])
       const cup = getFirstFilledFromLabels(parsed.headers, row, ["Cup"])
       const playoffs = getFirstFilledFromLabels(parsed.headers, row, ["Playoffs"])
-      const league = getFirstFilledFromLabels(parsed.headers, row, ["League"])
+      const league = getFirstFilledFromLabels(parsed.headers, row, ["League"], { exactOnly: true })
 
       const lpNum = toNumberMaybe(leaguePoints)
       if (lpNum != null) {

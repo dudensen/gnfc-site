@@ -126,8 +126,8 @@ function placementScore(value) {
 
   if (x.includes("winner")) return 100
   if (x.includes("champion")) return 90
+  if (x.includes("semi")) return 70
   if (x.includes("final")) return 80
-  if (x.includes("semifinal")) return 70
   if (x.includes("quarter")) return 60
   if (x.includes("16")) return 50
   if (x.includes("32")) return 40
@@ -141,8 +141,8 @@ function playoffPlacementScore(value) {
 
   if (x.includes("winner")) return 100
   if (x.includes("champion")) return 100
-  if (x.includes("final")) return 90
-  if (x.includes("semifinal")) return 80
+  if (x.includes("semi")) return 80
+  if (x === "final" || x.includes(" final")) return 90
   if (x.includes("quarter")) return 70
   if (x.includes("16")) return 60
   if (x.includes("32")) return 50

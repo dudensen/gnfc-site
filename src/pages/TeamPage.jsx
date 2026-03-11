@@ -12,6 +12,9 @@ const GENERAL_GID = "2143242587"
 const OVERVIEW_SHEET_ID = "1GGSJSL2aJ2UEXpHGU7NDOdN0CeOHeK0HzuxXOGqOUnA"
 const OVERVIEW_GID = "532207451"
 
+const CUP_SHEET_ID = "1Z8EbGi1rGDhg7dAQoPypJ2FTUQoMO730yx3Mm-cEMow"
+const CUP_GID = "784537326"
+
 const TROPHY_IMAGES = {
   leagueA: "/awards/league-winner-a.webp",
   leagueB: "/awards/league-winner-b.webp",
@@ -105,6 +108,11 @@ function yearsText(years) {
 
 function uniqSortedYears(values) {
   return [...new Set(values.map(Number).filter((x) => Number.isFinite(x)))].sort((a, b) => a - b)
+}
+
+function isMissingCupValue(v) {
+  const x = norm(v)
+  return !x || x === "0" || x === "—" || x === "-"
 }
 
 /* ----------------------------- scoring helpers ----------------------------- */
@@ -341,6 +349,136 @@ function getFirstFilledFromLabels(headers, row, labelVariants) {
   return ""
 }
 
+/* ----------------------------- cup fallback helpers ----------------------------- */
+
+const CUP_COL_MATCHUP_NO = 0 // A
+const CUP_COL_TEAM = 1 // B
+const CUP_COL_ROUND_TITLE = 3 // D
+
+
+function cupRoundFromTitle(v) {
+  const t = normalizeLoose(v)
+  if (!t) return ""
+
+  if (t.includes("qualifying round 1")) return "1st R."
+  if (t.includes("qualification round 1")) return "1st R."
+  if (t.includes("1st round")) return "1st R."
+  if (t.includes("first round")) return "1st R."
+
+  if (t.includes("qualifying round 2")) return "2nd R."
+  if (t.includes("qualification round 2")) return "2nd R."
+  if (t.includes("2nd round")) return "2nd R."
+  if (t.includes("second round")) return "2nd R."
+
+  if (t.includes("qualifying round 3")) return "3rd R."
+  if (t.includes("qualification round 3")) return "3rd R."
+  if (t.includes("3rd round")) return "3rd R."
+  if (t.includes("third round")) return "3rd R."
+
+  if (t.includes("round of 32") || t.includes("last 32")) return "32"
+  if (t.includes("round of 16") || t.includes("last 16")) return "16"
+  if (t.includes("quarter")) return "8"
+  if (t.includes("semi")) return "4"
+  if (t.includes("final")) return "Final"
+
+  // if your current cup still uses "Week X" titles, map them explicitly
+  if (t.includes("week 1")) return "1st R."
+  if (t.includes("week 2")) return "2nd R."
+  if (t.includes("week 3")) return "3rd R."
+  if (t.includes("week 4")) return "32"
+  if (t.includes("week 5")) return "16"
+  if (t.includes("week 6")) return "8"
+  if (t.includes("week 7")) return "4"
+  if (t.includes("week 8")) return "Final"
+
+  return ""
+}
+
+function teamNameMatches(a, b) {
+  return normalizeLoose(a) === normalizeLoose(b)
+}
+
+function isWinnerRowForTeam(row, teamName) {
+  const target = normalizeLoose(teamName)
+  const teamCell = normalizeLoose(row[CUP_COL_TEAM])
+
+  if (teamCell !== target) return false
+
+  // winner mark usually sits somewhere else on the same row
+  return row.some((cell, idx) => idx !== CUP_COL_TEAM && normalizeLoose(cell) === "w")
+}
+
+function stagePriority(stage) {
+  switch (s(stage)) {
+    case "1st R.":
+      return 1
+    case "2nd R.":
+      return 2
+    case "3rd R.":
+      return 3
+    case "32":
+      return 4
+    case "16":
+      return 5
+    case "8":
+      return 6
+    case "4":
+      return 7
+    case "Final":
+      return 8
+    case "Winner":
+      return 9
+    default:
+      return 0
+  }
+}
+
+function findCupFallbackFromRows(rows, teamName) {
+  if (!rows?.length || !teamName) return ""
+
+  let currentStage = ""
+  const appearances = []
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = (rows[i] || []).map((x) => s(x))
+    if (!row.some((x) => x)) continue
+
+    // ONLY read round titles from column D, same spirit as GnfcCupPage
+    const roundTitle = s(row[CUP_COL_ROUND_TITLE])
+    const parsedStage = cupRoundFromTitle(roundTitle)
+    if (parsedStage) {
+      currentStage = parsedStage
+      continue
+    }
+
+    if (!currentStage) continue
+
+    // ONLY read the actual team from column B
+    const rowTeam = s(row[CUP_COL_TEAM])
+    if (!rowTeam) continue
+    if (!teamNameMatches(rowTeam, teamName)) continue
+
+    appearances.push({
+      stage: currentStage,
+      winner: isWinnerRowForTeam(row, teamName),
+    })
+  }
+
+  if (!appearances.length) return ""
+
+  // If the team appears in multiple rounds, keep the farthest VALID stage found
+  const best = appearances
+    .slice()
+    .sort((a, b) => {
+      const av = a.winner && a.stage === "Final" ? stagePriority("Winner") : stagePriority(a.stage)
+      const bv = b.winner && b.stage === "Final" ? stagePriority("Winner") : stagePriority(b.stage)
+      return bv - av
+    })[0]
+
+  if (best.stage === "Final" && best.winner) return "Winner"
+  return best.stage
+}
+
 /* ----------------------------- icons ----------------------------- */
 
 function AwardTrophy({ type, label, href }) {
@@ -374,6 +512,7 @@ export default function TeamPage() {
   const [historyError, setHistoryError] = useState("")
   const [overviewParsed, setOverviewParsed] = useState(null)
   const [overviewError, setOverviewError] = useState("")
+  const [cupFallbackValue, setCupFallbackValue] = useState("")
 
   const team = useMemo(() => {
     const needle = norm(decodedName)
@@ -477,6 +616,38 @@ export default function TeamPage() {
       alive = false
     }
   }, [])
+
+  useEffect(() => {
+    let alive = true
+
+    async function loadCupFallback() {
+      try {
+        setCupFallbackValue("")
+
+        if (!team?.team) return
+
+        const currentCup = getFirst(team.raw, "Cup")
+        if (!isMissingCupValue(currentCup)) return
+
+        const res = await fetch(csvExportUrl(CUP_SHEET_ID, CUP_GID))
+        const text = await res.text()
+        if (!res.ok) throw new Error(`Cup sheet fetch failed: ${res.status} ${res.statusText}`)
+
+        const rows = parseCsv(text)
+        const fallback = findCupFallbackFromRows(rows, team.team)
+
+        if (alive) setCupFallbackValue(fallback)
+      } catch {
+        if (alive) setCupFallbackValue("")
+      }
+    }
+
+    loadCupFallback()
+
+    return () => {
+      alive = false
+    }
+  }, [team])
 
   const generalRow = useMemo(() => {
     return findRowForTeam(generalParsed, team?.team)
@@ -682,6 +853,11 @@ export default function TeamPage() {
   const worst5From = Math.max(1, totalTeams - 4)
 
   const leagueW = team?.raw ? getFirst(team.raw, "GENERAL PERFORMANCE League W%") : ""
+  const rawCupValue = team?.raw ? getFirst(team.raw, "Cup") : ""
+
+const currentCupValue = team?.raw
+  ? (isMissingCupValue(getFirst(team.raw, "Cup")) ? cupFallbackValue : getFirst(team.raw, "Cup"))
+  : ""
 
   const quickRanks = useMemo(() => {
     if (!team?.raw) return []
@@ -926,7 +1102,7 @@ export default function TeamPage() {
 
                   <div style={miniBox}>
                     <div style={miniLabel}>Cup</div>
-                    <div style={miniValue}>{val(getFirst(team.raw, "Cup"))}</div>
+                    <div style={miniValue}>{val(currentCupValue)}</div>
                   </div>
                 </div>
               </div>
@@ -946,31 +1122,31 @@ export default function TeamPage() {
                 </div>
 
                 {overviewError ? (
-                <div style={messageBoxStyle(12)}>{overviewError}</div>
-              ) : awardsSummary.length ? (
-                <div style={awardsSingleBox}>
-                  <div style={awardsIconsRow}>
-                    {awardsSummary.map((item) => (
-                      <div key={item.key} style={awardMiniItem}>
-                        <div style={awardMiniTrophiesWrap}>
-                          {Array.from({ length: item.count }).map((_, idx) => (
-                            <AwardTrophy
-                              key={`${item.key}-${idx}`}
-                              type={item.iconType}
-                              label={item.label}
-                              href={TROPHY_IMAGES[item.iconType]}
-                            />
-                          ))}
-                        </div>
+                  <div style={messageBoxStyle(12)}>{overviewError}</div>
+                ) : awardsSummary.length ? (
+                  <div style={awardsSingleBox}>
+                    <div style={awardsIconsRow}>
+                      {awardsSummary.map((item) => (
+                        <div key={item.key} style={awardMiniItem}>
+                          <div style={awardMiniTrophiesWrap}>
+                            {Array.from({ length: item.count }).map((_, idx) => (
+                              <AwardTrophy
+                                key={`${item.key}-${idx}`}
+                                type={item.iconType}
+                                label={item.label}
+                                href={TROPHY_IMAGES[item.iconType]}
+                              />
+                            ))}
+                          </div>
 
-                        <div style={awardMiniLabel}>{item.label}</div>
-                      </div>
-                    ))}
+                          <div style={awardMiniLabel}>{item.label}</div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div style={messageBoxStyle(12)}>No awards found for this team.</div>
-              )}
+                ) : (
+                  <div style={messageBoxStyle(12)}>No awards found for this team.</div>
+                )}
 
                 <div
                   style={{
@@ -1268,7 +1444,7 @@ const awardMiniLabel = {
   color: "#7c2d12",
   fontWeight: 900,
   lineHeight: 1.15,
-} 
+}
 
 const awardTrophyLink = {
   display: "inline-flex",

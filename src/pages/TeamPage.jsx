@@ -188,18 +188,18 @@ function playoffPlacementScore(value) {
   const x = normalizeLoose(value)
   if (!x) return -1
 
-  if (x.includes("winner")) return 100
+  if (x.includes("winner")) return 110
   if (x.includes("champion")) return 100
-  if (x.includes("semi")) return 80
   if (x === "final" || x.includes(" final")) return 90
+  if (x.includes("semi")) return 80
   if (x.includes("quarter")) return 70
   if (x.includes("16")) return 60
   if (x.includes("32")) return 50
+  if (x.includes("eliminated")) return 0
 
-  const n = toNumberMaybe(x)
-  if (n != null) return n
+  if (x === "1" || x === "1.0" || x === "1.00") return -1
 
-  return 0
+  return -1
 }
 
 function bestOfCandidates(candidates, scorer) {

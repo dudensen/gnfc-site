@@ -302,7 +302,69 @@ function parseSimpleSheet(rows) {
     return team && hasLetters(team)
   })
 
-  return { headers, data, idxTeam }
+  return { headers, data, idxTeam, headerRowIdx }
+}
+
+function parseOverviewGeneralRankings(rows) {
+  if (!rows?.length || rows.length < 3) {
+    throw new Error("Overview sheet CSV is missing rows.")
+  }
+
+  const { headerRowIdx, idxTeam } = findHeaderRow(rows, 10)
+  if (headerRowIdx < 0 || idxTeam < 0) {
+    throw new Error("Could not find Team column in overview sheet.")
+  }
+
+  const top = headerRowIdx > 0 ? rows[headerRowIdx - 1] || [] : []
+  const hdr = rows[headerRowIdx] || []
+  const colCount = Math.max(top.length, hdr.length)
+
+  const sectionByIdx = []
+  let curSection = ""
+  for (let i = 0; i < colCount; i++) {
+    const t = s(top[i])
+    if (t) curSection = t
+    sectionByIdx[i] = curSection || "OTHER"
+  }
+
+  const cols = Array.from({ length: colCount }, (_, idx) => {
+    const section = sectionByIdx[idx]
+    const raw = s(hdr[idx])
+
+    let label = raw
+    if (idx === idxTeam) label = "Team"
+    else if (!label) label = ""
+
+    return { idx, section, label }
+  })
+
+  const WANT_RSP = ["Bye Position (1-2)%", "Playoffs Entry (1-6)%", "Average Position", "W%"]
+
+  const rspIdxs = cols
+    .filter((c) => c.section === "REGULAR SEASON PERFORMANCE")
+    .map((c) => c.idx)
+    .filter((i) => i !== idxTeam)
+
+  for (let i = 0; i < rspIdxs.length; i++) {
+    if (!cols[rspIdxs[i]].label) {
+      cols[rspIdxs[i]].label = WANT_RSP[i] || `REGULAR SEASON PERFORMANCE ${i + 1}`
+    }
+  }
+
+  const data = rows.slice(headerRowIdx + 1).filter((row) => {
+    const team = s(row[idxTeam])
+    return team && hasLetters(team)
+  })
+
+  const sectionToCols = {}
+  sectionToCols["REGULAR SEASON PERFORMANCE"] = []
+
+  for (const name of WANT_RSP) {
+    const idx = cols.find((c) => c.section === "REGULAR SEASON PERFORMANCE" && norm(c.label) === norm(name))?.idx
+    if (idx != null) sectionToCols["REGULAR SEASON PERFORMANCE"].push(idx)
+  }
+
+  return { cols, data, idxTeam, sectionToCols }
 }
 
 function findRowForTeam(parsed, teamName) {
@@ -360,10 +422,8 @@ function getFirstFilledFromLabels(headers, row, labelVariants, options = {}) {
 
 /* ----------------------------- cup fallback helpers ----------------------------- */
 
-const CUP_COL_MATCHUP_NO = 0 // A
-const CUP_COL_TEAM = 1 // B
-const CUP_COL_ROUND_TITLE = 3 // D
-
+const CUP_COL_TEAM = 1
+const CUP_COL_ROUND_TITLE = 3
 
 function cupRoundFromTitle(v) {
   const t = normalizeLoose(v)
@@ -390,7 +450,6 @@ function cupRoundFromTitle(v) {
   if (t.includes("semi")) return "Semifinals"
   if (t.includes("final")) return "Final"
 
-  // if your current cup still uses "Week X" titles, map them explicitly
   if (t.includes("week 1")) return "1st Round"
   if (t.includes("week 2")) return "2nd Round"
   if (t.includes("week 3")) return "3rd Round"
@@ -412,8 +471,6 @@ function isWinnerRowForTeam(row, teamName) {
   const teamCell = normalizeLoose(row[CUP_COL_TEAM])
 
   if (teamCell !== target) return false
-
-  // winner mark usually sits somewhere else on the same row
   return row.some((cell, idx) => idx !== CUP_COL_TEAM && normalizeLoose(cell) === "w")
 }
 
@@ -452,7 +509,6 @@ function findCupFallbackFromRows(rows, teamName) {
     const row = (rows[i] || []).map((x) => s(x))
     if (!row.some((x) => x)) continue
 
-    // ONLY read round titles from column D, same spirit as GnfcCupPage
     const roundTitle = s(row[CUP_COL_ROUND_TITLE])
     const parsedStage = cupRoundFromTitle(roundTitle)
     if (parsedStage) {
@@ -462,7 +518,6 @@ function findCupFallbackFromRows(rows, teamName) {
 
     if (!currentStage) continue
 
-    // ONLY read the actual team from column B
     const rowTeam = s(row[CUP_COL_TEAM])
     if (!rowTeam) continue
     if (!teamNameMatches(rowTeam, teamName)) continue
@@ -475,7 +530,6 @@ function findCupFallbackFromRows(rows, teamName) {
 
   if (!appearances.length) return ""
 
-  // If the team appears in multiple rounds, keep the farthest VALID stage found
   const best = appearances
     .slice()
     .sort((a, b) => {
@@ -520,6 +574,7 @@ export default function TeamPage() {
   const [historyParsed, setHistoryParsed] = useState([])
   const [historyError, setHistoryError] = useState("")
   const [overviewParsed, setOverviewParsed] = useState(null)
+  const [overviewGeneralParsed, setOverviewGeneralParsed] = useState(null)
   const [overviewError, setOverviewError] = useState("")
   const [cupFallbackValue, setCupFallbackValue] = useState("")
 
@@ -608,12 +663,23 @@ export default function TeamPage() {
         if (!res.ok) throw new Error(`Overview sheet fetch failed: ${res.status} ${res.statusText}`)
 
         const rows = parseCsv(text)
-        const parsed = parseSimpleSheet(rows)
 
-        if (alive) setOverviewParsed(parsed)
+        const parsedSimple = parseSimpleSheet(rows)
+        if (alive) setOverviewParsed(parsedSimple)
+
+        try {
+          const parsedGeneral = parseOverviewGeneralRankings(rows)
+          if (alive) setOverviewGeneralParsed(parsedGeneral)
+        } catch (e) {
+          if (alive) {
+            setOverviewGeneralParsed(null)
+            console.warn("[TeamPage][RSP parse failed]", e?.message || String(e))
+          }
+        }
       } catch (e) {
         if (alive) {
           setOverviewParsed(null)
+          setOverviewGeneralParsed(null)
           setOverviewError(e?.message || String(e))
         }
       }
@@ -662,41 +728,46 @@ export default function TeamPage() {
     return findRowForTeam(generalParsed, team?.team)
   }, [generalParsed, team?.team])
 
-  const awardsSummary = useMemo(() => {
-    if (!team?.team || !overviewParsed) return []
+  const awardsRow = useMemo(() => {
+    return findRowForTeam(overviewParsed, team?.team)
+  }, [overviewParsed, team?.team])
 
-    const row = findRowForTeam(overviewParsed, team.team)
-    if (!row) return []
+  const rspRow = useMemo(() => {
+    return findRowForTeam(overviewGeneralParsed, team?.team)
+  }, [overviewGeneralParsed, team?.team])
+
+  const awardsSummary = useMemo(() => {
+    if (!team?.team || !overviewParsed || !awardsRow) return []
 
     const rawAwards = [
       {
         key: "leagueWinnerA",
         label: "League Winner A",
-        value: getFirstFilledFromLabels(overviewParsed.headers, row, ["League Winner A"]),
+        value: getFirstFilledFromLabels(overviewParsed.headers, awardsRow, ["League Winner A"]),
         iconType: "leagueA",
       },
       {
         key: "leagueWinnerB",
         label: "League Winner B",
-        value: getFirstFilledFromLabels(overviewParsed.headers, row, ["League Winner B"]),
+        value: getFirstFilledFromLabels(overviewParsed.headers, awardsRow, ["League Winner B"]),
         iconType: "leagueB",
       },
       {
         key: "leagueWinnerG",
         label: "League Winner Γ",
-        value: getFirstFilledFromLabels(overviewParsed.headers, row, ["League Winner Γ"]),
+        value: getFirstFilledFromLabels(overviewParsed.headers, awardsRow, ["League Winner Γ"]),
         iconType: "leagueG",
       },
       {
         key: "championsLeague",
         label: "Champions League",
-        value: getFirstFilledFromLabels(overviewParsed.headers, row, ["Champions League"]),
+        value: getFirstFilledFromLabels(overviewParsed.headers, awardsRow, ["Champions League"]),
         iconType: "cl",
       },
       {
         key: "cup",
         label: "Cup",
-        value: getFirstFilledFromLabels(overviewParsed.headers, row, ["Cup"]),
+        value: getFirstFilledFromLabels(overviewParsed.headers, awardsRow, ["Cup"]),
         iconType: "cup",
       },
     ]
@@ -710,12 +781,37 @@ export default function TeamPage() {
         }
       })
       .filter((item) => item.count > 0)
-  }, [overviewParsed, team?.team])
+  }, [overviewParsed, awardsRow, team?.team])
+
+  const regularSeasonPerformance = useMemo(() => {
+    if (!overviewGeneralParsed || !rspRow) {
+      return {
+        byePosition: "",
+        playoffsEntry: "",
+        averagePosition: "",
+        winPct: "",
+      }
+    }
+
+    const rspCols = overviewGeneralParsed.sectionToCols["REGULAR SEASON PERFORMANCE"] || []
+    const byLabel = {}
+
+    for (const colIdx of rspCols) {
+      const label = overviewGeneralParsed.cols[colIdx]?.label || ""
+      byLabel[label] = s(rspRow[colIdx])
+    }
+
+    return {
+      byePosition: byLabel["Bye Position (1-2)%"] || "",
+      playoffsEntry: byLabel["Playoffs Entry (1-6)%"] || "",
+      averagePosition: byLabel["Average Position"] || "",
+      winPct: byLabel["W%"] || "",
+    }
+  }, [overviewGeneralParsed, rspRow])
 
   const bestPerformance = useMemo(() => {
     if (!team?.team || !historyParsed.length) return []
 
-    const leaguePointsCandidates = []
     const championsLeagueCandidates = []
     const cupCandidates = []
     const playoffsCandidates = []
@@ -724,20 +820,10 @@ export default function TeamPage() {
       const row = findRowForTeam(parsed, team.team)
       if (!row) continue
 
-      const leaguePoints = getFirstFilledFromLabels(parsed.headers, row, ["League points"])
       const cl = getFirstFilledFromLabels(parsed.headers, row, ["Champions League"])
       const cup = getFirstFilledFromLabels(parsed.headers, row, ["Cup"])
       const playoffs = getFirstFilledFromLabels(parsed.headers, row, ["Playoffs"])
       const league = getFirstFilledFromLabels(parsed.headers, row, ["League"], { exactOnly: true })
-
-      const lpNum = toNumberMaybe(leaguePoints)
-      if (lpNum != null) {
-        leaguePointsCandidates.push({
-          value: String(lpNum),
-          year: Number(year),
-          score: lpNum,
-        })
-      }
 
       if (looksFilledValue(cl)) {
         championsLeagueCandidates.push({
@@ -762,7 +848,6 @@ export default function TeamPage() {
       }
     }
 
-    const bestLeaguePoints = bestOfCandidates(leaguePointsCandidates, (x) => x.score)
     const bestChampionsLeague = bestOfCandidates(championsLeagueCandidates, (x) => placementScore(x.value))
     const bestCup = bestOfCandidates(cupCandidates, (x) => placementScore(x.value))
     const bestLeaguePlacement = bestOfCandidates(playoffsCandidates, (x) => playoffPlacementScore(x.value))
@@ -809,13 +894,6 @@ export default function TeamPage() {
     }
 
     return [
-      bestLeaguePoints
-        ? {
-            label: "Most League Points",
-            display: `${bestLeaguePoints.value} (${bestLeaguePoints.year})`,
-          }
-        : null,
-
       bestChampionsLeague
         ? {
             label: "Best Champions League Placement",
@@ -840,9 +918,13 @@ export default function TeamPage() {
       divisionWinningEntries.length
         ? {
             label: "Best Division",
-            display: `${bestLeaguePlacement.value} (${yearsText(
-              uniqSortedYears(divisionWinningEntries.map((x) => x.year))
-            )})`,
+            display: `${bestLeaguePlacement.value} - ${divisionWinningEntries
+              .map((x) => {
+                const leagueText = s(x.league)
+                const divisionOnly = leagueText ? leagueText.replace(/\d+$/g, "") : "—"
+                return `${divisionOnly} (${x.year})`
+              })
+              .join(", ")}`,
           }
         : null,
     ].filter(Boolean)
@@ -862,11 +944,12 @@ export default function TeamPage() {
   const worst5From = Math.max(1, totalTeams - 4)
 
   const leagueW = team?.raw ? getFirst(team.raw, "GENERAL PERFORMANCE League W%") : ""
-  const rawCupValue = team?.raw ? getFirst(team.raw, "Cup") : ""
 
-const currentCupValue = team?.raw
-  ? (isMissingCupValue(getFirst(team.raw, "Cup")) ? cupFallbackValue : getFirst(team.raw, "Cup"))
-  : ""
+  const currentCupValue = team?.raw
+    ? isMissingCupValue(getFirst(team.raw, "Cup"))
+      ? cupFallbackValue
+      : getFirst(team.raw, "Cup")
+    : ""
 
   const quickRanks = useMemo(() => {
     if (!team?.raw) return []
@@ -910,17 +993,7 @@ const currentCupValue = team?.raw
   const pointsSystemStats = useMemo(() => {
     if (!generalParsed || !generalRow) return []
 
-    const wanted = [
-      "league points",
-      "category adj",
-      "cup",
-      "general standing",
-      "stats winners",
-      "tw",
-      "rw",
-      "extra",
-      "total",
-    ]
+    const wanted = ["league points", "category adj", "cup", "general standing", "stats winners", "tw", "rw", "extra", "total"]
 
     const rankLike = new Set(["general standing"])
     const byLabel = new Map()
@@ -937,11 +1010,7 @@ const currentCupValue = team?.raw
       for (const want of wanted) {
         const fullLabel = norm(`${cleanSection} ${cleanLabel}`)
 
-        if (
-          cleanLabel === want ||
-          fullLabel.includes(`points system ${want}`) ||
-          fullLabel === want
-        ) {
+        if (cleanLabel === want || fullLabel.includes(`points system ${want}`) || fullLabel === want) {
           if (!byLabel.has(want)) {
             byLabel.set(want, {
               label: want === "league points" ? "League Points" : label,
@@ -1167,6 +1236,49 @@ const currentCupValue = team?.raw
                     flexWrap: "wrap",
                   }}
                 >
+                  <div style={{ fontSize: 18, fontWeight: 900 }}>All Time Performance</div>
+                  <div style={{ fontSize: 12, color: "var(--gnfc-muted)" }}>Career regular season profile</div>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 14,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                    gap: 10,
+                  }}
+                >
+                  <div style={rspBox}>
+                    <div style={rspValue}>{val(regularSeasonPerformance.byePosition)}</div>
+                    <div style={rspLabel}>Bye Position (1-2)%</div>
+                  </div>
+
+                  <div style={rspBox}>
+                    <div style={rspValue}>{val(regularSeasonPerformance.playoffsEntry)}</div>
+                    <div style={rspLabel}>Playoffs Entry (1-6)%</div>
+                  </div>
+
+                  <div style={rspBox}>
+                    <div style={rspValue}>{val(regularSeasonPerformance.averagePosition)}</div>
+                    <div style={rspLabel}>Average Position</div>
+                  </div>
+
+                  <div style={rspBox}>
+                    <div style={rspValue}>{val(regularSeasonPerformance.winPct)}</div>
+                    <div style={rspLabel}>W%</div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 18,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    alignItems: "baseline",
+                    flexWrap: "wrap",
+                  }}
+                >
                   <div style={{ fontSize: 18, fontWeight: 900 }}>Best Performances</div>
                   <div style={{ fontSize: 12, color: "var(--gnfc-muted)" }}>Best historical results</div>
                 </div>
@@ -1238,10 +1350,11 @@ const currentCupValue = team?.raw
                       <div
                         key={key}
                         style={{
-                          border: "1px solid rgba(255,255,255,0.10)",
+                          border: "1px solid rgba(5, 97, 97, 0.35)",
                           borderRadius: 14,
                           padding: 12,
-                          background: "rgba(0,0,0,0.12)",
+                          background: "rgba(255,255,255,0.96)",
+                          boxShadow: "0 4px 12px rgba(5, 97, 97, 0.05)",
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
@@ -1282,10 +1395,11 @@ const currentCupValue = team?.raw
                     <div
                       key={label}
                       style={{
-                        border: "1px solid rgba(255,255,255,0.10)",
+                        border: "1px solid rgba(5, 97, 97, 0.35)",
                         borderRadius: 14,
                         padding: 12,
-                        background: "rgba(0,0,0,0.12)",
+                        background: "rgba(255,255,255,0.96)",
+                        boxShadow: "0 4px 12px rgba(5, 97, 97, 0.05)",
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
@@ -1311,10 +1425,11 @@ const currentCupValue = team?.raw
                       <div
                         key={label}
                         style={{
-                          border: "1px solid rgba(255,255,255,0.10)",
+                          border: "1px solid rgba(5, 97, 97, 0.35)",
                           borderRadius: 14,
                           padding: 12,
-                          background: "rgba(0,0,0,0.12)",
+                          background: "rgba(255,255,255,0.96)",
+                          boxShadow: "0 4px 12px rgba(5, 97, 97, 0.05)",
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
@@ -1375,10 +1490,11 @@ const currentCupValue = team?.raw
 function messageBoxStyle(marginTop = 12) {
   return {
     marginTop,
-    border: "1px solid rgba(255,255,255,0.10)",
+    border: "1px solid rgba(5, 97, 97, 0.35)",
     borderRadius: 14,
     padding: 12,
-    background: "rgba(0,0,0,0.12)",
+    background: "rgba(255,255,255,0.96)",
+    boxShadow: "0 4px 12px rgba(5, 97, 97, 0.05)",
     color: "var(--gnfc-muted)",
     fontWeight: 700,
   }
@@ -1397,10 +1513,11 @@ const teamSelect = {
 }
 
 const miniBox = {
-  border: "1px solid rgba(255,255,255,0.10)",
+  border: "1px solid rgba(5, 97, 97, 0.35)",
   borderRadius: 14,
   padding: 12,
-  background: "rgba(0,0,0,0.12)",
+  background: "rgba(255,255,255,0.96)",
+  boxShadow: "0 4px 12px rgba(5, 97, 97, 0.05)",
 }
 
 const miniLabel = {
@@ -1412,6 +1529,27 @@ const miniLabel = {
 
 const miniValue = {
   marginTop: 6,
+  fontSize: 18,
+  fontWeight: 1000,
+}
+
+const rspBox = {
+  border: "1px solid rgba(249,115,22,0.22)",
+  borderRadius: 14,
+  padding: 12,
+  background: "rgba(249,115,22,0.08)",
+  textAlign: "center",
+}
+
+const rspLabel = {
+  marginTop: 6,
+  fontSize: 11,
+  color: "var(--gnfc-muted)",
+  fontWeight: 900,
+  lineHeight: 1.15,
+}
+
+const rspValue = {
   fontSize: 18,
   fontWeight: 1000,
 }

@@ -117,20 +117,69 @@ function isMissingCupValue(v) {
 
 /* ----------------------------- scoring helpers ----------------------------- */
 
+function normalizeCupDisplay(value) {
+  const x = normalizeLoose(value)
+  if (!x) return s(value)
+
+  if (x.includes("winner")) return "Winner"
+  if (x === "final" || x.includes(" final ") || x.startsWith("final ")) return "Final"
+  if (x.includes("semifinal") || x.includes("semi final") || x.includes("final 4") || x === "4") return "4"
+  if (x.includes("quarter") || x.includes("final 8") || x === "8") return "Quarterfinals"
+  if (x.includes("round of 16") || x.includes("last 16") || x === "16") return "Last 16"
+  if (x.includes("round of 32") || x.includes("last 32") || x === "32") return "Last 32"
+
+  if (x.includes("3rd round") || x.includes("third round") || x.includes("3rd r")) return "3rd Round"
+  if (x.includes("2nd round") || x.includes("second round") || x.includes("2nd r")) return "2nd Round"
+  if (x.includes("1st round") || x.includes("first round") || x.includes("1st r")) return "1st Round"
+
+  return s(value)
+}
+
 function placementScore(value) {
   const x = normalizeLoose(value)
   if (!x) return -1
 
-  const n = toNumberMaybe(x)
-  if (n != null) return n
-
+  // top results
   if (x.includes("winner")) return 100
-  if (x.includes("champion")) return 90
-  if (x.includes("semi")) return 70
-  if (x.includes("final")) return 80
-  if (x.includes("quarter")) return 60
-  if (x.includes("16")) return 50
-  if (x.includes("32")) return 40
+  if (x.includes("champion")) return 95
+
+  // final
+  if (x === "final" || x.includes(" final ") || x.startsWith("final ")) return 90
+  if (x.includes("runner up")) return 89
+
+  // semifinal / final 4
+  if (x.includes("semifinal")) return 80
+  if (x.includes("semi final")) return 80
+  if (x.includes("final 4")) return 80
+  if (x === "4") return 80
+
+  // quarterfinal / final 8
+  if (x.includes("quarter")) return 70
+  if (x.includes("final 8")) return 70
+  if (x === "8") return 70
+
+  // round of 16, including forms like "round of 16 - 2"
+  if (x.includes("round of 16")) return 60
+  if (x.includes("last 16")) return 60
+  if (x === "16") return 60
+
+  // round of 32
+  if (x.includes("round of 32")) return 50
+  if (x.includes("last 32")) return 50
+  if (x === "32") return 50
+
+  // qualifying rounds
+  if (x.includes("3rd round")) return 40
+  if (x.includes("third round")) return 40
+  if (x.includes("3rd r")) return 40
+
+  if (x.includes("2nd round")) return 30
+  if (x.includes("second round")) return 30
+  if (x.includes("2nd r")) return 30
+
+  if (x.includes("1st round")) return 20
+  if (x.includes("first round")) return 20
+  if (x.includes("1st r")) return 20
 
   return 0
 }
@@ -902,11 +951,11 @@ export default function TeamPage() {
         : null,
 
       bestCup
-        ? {
-            label: "Best Cup Placement",
-            display: `${bestCup.value} (${bestCup.year})`,
-          }
-        : null,
+      ? {
+          label: "Best Cup Placement",
+          display: `${normalizeCupDisplay(bestCup.value)} (${bestCup.year})`,
+        }
+      : null,
 
       bestLeaguePlacement
         ? {

@@ -19,6 +19,7 @@ const TROPHY_IMAGES = {
   leagueA: "/awards/league-winner-a.webp",
   leagueB: "/awards/league-winner-b.webp",
   leagueG: "/awards/league-winner-g.webp",
+  divisionWinner: "/awards/division-winner.webp",
   cl: "/awards/champions-league.webp",
   cup: "/awards/cup.webp",
 }
@@ -786,51 +787,90 @@ export default function TeamPage() {
   }, [overviewGeneralParsed, team?.team])
 
   const awardsSummary = useMemo(() => {
-    if (!team?.team || !overviewParsed || !awardsRow) return []
+  if (!team?.team || !historyParsed.length) return []
 
-    const rawAwards = [
-      {
-        key: "leagueWinnerA",
-        label: "League Winner A",
-        value: getFirstFilledFromLabels(overviewParsed.headers, awardsRow, ["League Winner A"]),
-        iconType: "leagueA",
-      },
-      {
-        key: "leagueWinnerB",
-        label: "League Winner B",
-        value: getFirstFilledFromLabels(overviewParsed.headers, awardsRow, ["League Winner B"]),
-        iconType: "leagueB",
-      },
-      {
-        key: "leagueWinnerG",
-        label: "League Winner Γ",
-        value: getFirstFilledFromLabels(overviewParsed.headers, awardsRow, ["League Winner Γ"]),
-        iconType: "leagueG",
-      },
-      {
-        key: "championsLeague",
-        label: "Champions League",
-        value: getFirstFilledFromLabels(overviewParsed.headers, awardsRow, ["Champions League"]),
-        iconType: "cl",
-      },
-      {
-        key: "cup",
-        label: "Cup",
-        value: getFirstFilledFromLabels(overviewParsed.headers, awardsRow, ["Cup"]),
-        iconType: "cup",
-      },
-    ]
+  let leagueWinnerA = 0
+  let leagueWinnerB = 0
+  let leagueWinnerG = 0
+  let divisionWinner = 0
+  let championsLeague = 0
+  let cup = 0
 
-    return rawAwards
-      .map((item) => {
-        const num = toNumberMaybe(item.value)
-        return {
-          ...item,
-          count: num != null ? num : 0,
-        }
-      })
-      .filter((item) => item.count > 0)
-  }, [overviewParsed, awardsRow, team?.team])
+  for (const { parsed } of historyParsed) {
+    const row = findRowForTeam(parsed, team.team)
+    if (!row) continue
+
+    const playoffs = getFirstFilledFromLabels(parsed.headers, row, ["Playoffs"])
+    const league = getFirstFilledFromLabels(parsed.headers, row, ["League"], { exactOnly: true })
+    const cl = getFirstFilledFromLabels(parsed.headers, row, ["Champions League"])
+    const cupValue = getFirstFilledFromLabels(parsed.headers, row, ["Cup"])
+
+    const playoffsNorm = normalizeLoose(playoffs)
+    const leagueNorm = normalizeLoose(league)
+    const clNorm = normalizeLoose(cl)
+    const cupNorm = normalizeLoose(cupValue)
+
+    const isLeagueWinner = playoffsNorm.includes("winner") || playoffsNorm.includes("champion")
+    const isDivisionWinner = playoffsNorm.includes("champion")
+
+    if (isLeagueWinner) {
+      if (leagueNorm.startsWith("a")) leagueWinnerA += 1
+      else if (leagueNorm.startsWith("b")) leagueWinnerB += 1
+      else if (leagueNorm.startsWith("γ") || leagueNorm.startsWith("g")) leagueWinnerG += 1
+    }
+
+    if (isDivisionWinner) {
+      divisionWinner += 1
+    }
+
+    if (clNorm.includes("winner") || clNorm.includes("champion")) {
+      championsLeague += 1
+    }
+
+    if (cupNorm.includes("winner") || cupNorm.includes("champion")) {
+      cup += 1
+    }
+  }
+
+  return [
+  {
+    key: "divisionWinner",
+    label: "Division Winner",
+    count: divisionWinner,
+    iconType: "divisionWinner",
+  },
+  {
+    key: "leagueWinnerA",
+    label: "League Winner A",
+    count: leagueWinnerA,
+    iconType: "leagueA",
+  },
+  {
+    key: "leagueWinnerB",
+    label: "League Winner B",
+    count: leagueWinnerB,
+    iconType: "leagueB",
+  },
+  {
+    key: "leagueWinnerG",
+    label: "League Winner Γ",
+    count: leagueWinnerG,
+    iconType: "leagueG",
+  },
+  {
+    key: "championsLeague",
+    label: "Champions League",
+    count: championsLeague,
+    iconType: "cl",
+  },
+  {
+    key: "cup",
+    label: "Cup",
+    count: cup,
+    iconType: "cup",
+  },
+].filter((item) => item.count > 0)
+}, [historyParsed, team?.team])
 
   const regularSeasonPerformance = useMemo(() => {
     if (!overviewGeneralParsed || !rspRow) {
@@ -901,46 +941,29 @@ export default function TeamPage() {
     const bestCup = bestOfCandidates(cupCandidates, (x) => placementScore(x.value))
     const bestLeaguePlacement = bestOfCandidates(playoffsCandidates, (x) => playoffPlacementScore(x.value))
 
-    const bestLeaguePlacementScore = bestLeaguePlacement
-      ? playoffPlacementScore(bestLeaguePlacement.value)
-      : null
+const bestLeagueWinningEntries = playoffsCandidates
+  .filter((x) => {
+    const label = normalizeLoose(x.value)
+    return label.includes("winner") || label.includes("champion")
+  })
+  .slice()
+  .sort((a, b) => a.year - b.year)
 
-    const sameBestLeaguePlacementEntries =
-      bestLeaguePlacementScore == null
-        ? []
-        : playoffsCandidates
-            .filter((x) => playoffPlacementScore(x.value) === bestLeaguePlacementScore)
-            .slice()
-            .sort((a, b) => a.year - b.year)
+const divisionWinningEntries = playoffsCandidates
+  .filter((x) => normalizeLoose(x.value).includes("champion"))
+  .slice()
+  .sort((a, b) => a.year - b.year)
 
-    const divisionWinningEntries =
-      bestLeaguePlacementScore == null
-        ? []
-        : playoffsCandidates
-            .filter((x) => {
-              const score = playoffPlacementScore(x.value)
-              const label = normalizeLoose(x.value)
-              return score === bestLeaguePlacementScore && label.includes("champion")
-            })
-            .slice()
-            .sort((a, b) => a.year - b.year)
+function bestLeaguePlacementDisplay(entry, entries) {
+  if (!entry || !entries.length) return ""
 
-    function bestLeaguePlacementDisplay(entry, entries) {
-      if (!entry) return ""
+  const parts = entries.map((x) => {
+    const leaguePart = x.league ? `${x.league} ` : ""
+    return `${leaguePart}(${x.year})`
+  })
 
-      const label = normalizeLoose(entry.value)
-      const isWinner = label.includes("winner")
-
-      if (isWinner) {
-        const parts = entries.map((x) => {
-          const leaguePart = x.league ? `${x.league} ` : ""
-          return `${leaguePart}(${x.year})`
-        })
-        return `${entry.value} - ${parts.join(", ")}`
-      }
-
-      return `${entry.value} (${yearsText(uniqSortedYears(entries.map((x) => x.year)))})`
-    }
+  return `Winner - ${parts.join(", ")}`
+}
 
     return [
       bestChampionsLeague
@@ -960,22 +983,22 @@ export default function TeamPage() {
       bestLeaguePlacement
         ? {
             label: "Best League Placement",
-            display: bestLeaguePlacementDisplay(bestLeaguePlacement, sameBestLeaguePlacementEntries),
+            display: bestLeaguePlacementDisplay(bestLeaguePlacement, bestLeagueWinningEntries),
           }
         : null,
 
       divisionWinningEntries.length
-        ? {
-            label: "Best Division",
-            display: `${bestLeaguePlacement.value} - ${divisionWinningEntries
-              .map((x) => {
-                const leagueText = s(x.league)
-                const divisionOnly = leagueText ? leagueText.replace(/\d+$/g, "") : "—"
-                return `${divisionOnly} (${x.year})`
-              })
-              .join(", ")}`,
-          }
-        : null,
+  ? {
+      label: "Best Division",
+      display: `Champion - ${divisionWinningEntries
+        .map((x) => {
+          const leagueText = s(x.league)
+          const divisionOnly = leagueText ? leagueText.replace(/\d+$/g, "") : "—"
+          return `${divisionOnly} (${x.year})`
+        })
+        .join(", ")}`,
+    }
+  : null,
     ].filter(Boolean)
   }, [historyParsed, team?.team])
 

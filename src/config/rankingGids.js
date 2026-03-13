@@ -5,6 +5,7 @@ export const RANKING_SHEET_ID =
 export const RANKING_GIDS = {
   Groups: "1712497869",
   All: "532207451",
+  "2026": "70057647",
   "2025": "2097675259",
   "2024": "176082889",
   "2023": "662928965",

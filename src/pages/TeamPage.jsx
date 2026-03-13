@@ -204,9 +204,26 @@ function placementScore(value) {
   return 0
 }
 
+function isRealLeagueWinnerLabel(value) {
+  const x = normalizeLoose(value)
+  if (!x) return false
+
+  const isPlayoutWinner =
+    (x.includes("playout") || x.includes("playouts")) &&
+    x.includes("winner")
+
+  if (isPlayoutWinner) return false
+
+  return x.includes("winner") || x.includes("champion")
+}
+
 function playoffPlacementScore(value) {
   const x = normalizeLoose(value)
   if (!x) return -1
+
+  if ((x.includes("playout") || x.includes("playouts")) && x.includes("winner")) {
+    return -1
+  }
 
   if (x.includes("winner")) return 110
   if (x.includes("champion")) return 100
@@ -989,10 +1006,7 @@ if (leagueRankingNum != null && leagueRankingNum > 0) {
   : null
 
 const bestLeagueWinningEntries = playoffsCandidates
-  .filter((x) => {
-    const label = normalizeLoose(x.value)
-    return label.includes("winner") || label.includes("champion")
-  })
+  .filter((x) => isRealLeagueWinnerLabel(x.value))
   .slice()
   .sort((a, b) => a.year - b.year)
 
@@ -1004,16 +1018,12 @@ const divisionWinningEntries = playoffsCandidates
 function bestLeaguePlacementDisplay(entry, entries) {
   if (!entry) return ""
 
-  const normalized = normalizeLoose(entry.value)
-
-  if (normalized.includes("winner") || normalized.includes("champion")) {
+  if (isRealLeagueWinnerLabel(entry.value)) {
     const winnerEntries = entries.length ? entries : [entry]
-
     const parts = winnerEntries.map((x) => {
       const leaguePart = x.league ? `${x.league} ` : ""
       return `${leaguePart}(${x.year})`
     })
-
     return `Winner - ${parts.join(", ")}`
   }
 

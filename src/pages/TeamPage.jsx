@@ -141,7 +141,7 @@ function normalizeCupDisplay(value) {
 
   if (x.includes("winner")) return "Winner"
   if (x === "final" || x.includes(" final ") || x.startsWith("final ")) return "Final"
-  if (x.includes("semifinal") || x.includes("semi final") || x.includes("final 4") || x === "4") return "4"
+  if (x.includes("semifinal") || x.includes("semi final") || x.includes("Semifinals") || x.includes("final 4") || x === "4") return "4"
   if (x.includes("quarter") || x.includes("final 8") || x === "8") return "Quarterfinals"
   if (x.includes("round of 16") || x.includes("last 16") || x === "16") return "Last 16"
   if (x.includes("round of 32") || x.includes("last 32") || x === "32") return "Last 32"
@@ -167,6 +167,8 @@ function placementScore(value) {
 
   // semifinal / final 4
   if (x.includes("semifinal")) return 80
+  if (x.includes("semifinals")) return 80
+  if (x.includes("Semifinals")) return 80
   if (x.includes("semi final")) return 80
   if (x.includes("final 4")) return 80
   if (x === "4") return 80
@@ -921,42 +923,70 @@ export default function TeamPage() {
     const championsLeagueCandidates = []
     const cupCandidates = []
     const playoffsCandidates = []
+    const leagueRankingCandidates = []
 
     for (const { year, parsed } of historyParsed) {
       const row = findRowForTeam(parsed, team.team)
+    
       if (!row) continue
 
       const cl = getFirstFilledFromLabels(parsed.headers, row, ["Champions League"])
-      const cup = getFirstFilledFromLabels(parsed.headers, row, ["Cup"])
-      const playoffs = getFirstFilledFromLabels(parsed.headers, row, ["Playoffs"])
-      const league = getFirstFilledFromLabels(parsed.headers, row, ["League"], { exactOnly: true })
+const cup = getFirstFilledFromLabels(parsed.headers, row, ["Cup"])
+const playoffs = getFirstFilledFromLabels(parsed.headers, row, ["Playoffs"])
+const league = getFirstFilledFromLabels(parsed.headers, row, ["League"], { exactOnly: true })
+const leagueRanking = getFirstFilledFromLabels(parsed.headers, row, [
+  "League Ranking",
+  "League Rank",
+  "Ranking",
+  "League Standing",
+  "Standing",
+])
 
-      if (looksFilledValue(cl)) {
-        championsLeagueCandidates.push({
-          value: cl,
-          year: Number(year),
-        })
-      }
+if (looksFilledValue(cl)) {
+  championsLeagueCandidates.push({
+    value: cl,
+    year: Number(year),
+  })
+}
 
-      if (looksFilledValue(cup)) {
-        cupCandidates.push({
-          value: cup,
-          year: Number(year),
-        })
-      }
+if (looksFilledValue(cup)) {
+  cupCandidates.push({
+    value: cup,
+    year: Number(year),
+  })
+}
 
-      if (looksFilledValue(playoffs)) {
-        playoffsCandidates.push({
-          value: playoffs,
-          year: Number(year),
-          league: s(league),
-        })
-      }
+if (looksFilledValue(playoffs)) {
+  playoffsCandidates.push({
+    value: playoffs,
+    year: Number(year),
+    league: s(league),
+  })
+}
+
+const leagueRankingNum = toRank(leagueRanking)
+if (leagueRankingNum != null && leagueRankingNum > 0) {
+  leagueRankingCandidates.push({
+    value: leagueRankingNum,
+    year: Number(year),
+    league: s(league),
+  })
+}
     }
+    
 
     const bestChampionsLeague = bestOfCandidates(championsLeagueCandidates, (x) => placementScore(x.value))
     const bestCup = bestOfCandidates(cupCandidates, (x) => placementScore(x.value))
     const bestLeaguePlacement = bestOfCandidates(playoffsCandidates, (x) => playoffPlacementScore(x.value))
+
+    const bestLeagueRankingFallback = leagueRankingCandidates.length
+  ? leagueRankingCandidates
+      .slice()
+      .sort((a, b) => {
+        if (a.value !== b.value) return a.value - b.value
+        return b.year - a.year
+      })[0]
+  : null
 
 const bestLeagueWinningEntries = playoffsCandidates
   .filter((x) => {
@@ -972,14 +1002,22 @@ const divisionWinningEntries = playoffsCandidates
   .sort((a, b) => a.year - b.year)
 
 function bestLeaguePlacementDisplay(entry, entries) {
-  if (!entry || !entries.length) return ""
+  if (!entry) return ""
 
-  const parts = entries.map((x) => {
-    const leaguePart = x.league ? `${x.league} ` : ""
-    return `${leaguePart}(${x.year})`
-  })
+  const normalized = normalizeLoose(entry.value)
 
-  return `Winner - ${parts.join(", ")}`
+  if (normalized.includes("winner") || normalized.includes("champion")) {
+    const winnerEntries = entries.length ? entries : [entry]
+
+    const parts = winnerEntries.map((x) => {
+      const leaguePart = x.league ? `${x.league} ` : ""
+      return `${leaguePart}(${x.year})`
+    })
+
+    return `Winner - ${parts.join(", ")}`
+  }
+
+  return `${entry.value}${entry.league ? ` - ${entry.league}` : ""} (${entry.year})`
 }
 
     return [
@@ -998,11 +1036,16 @@ function bestLeaguePlacementDisplay(entry, entries) {
       : null,
 
       bestLeaguePlacement
-        ? {
-            label: "Best League Placement",
-            display: bestLeaguePlacementDisplay(bestLeaguePlacement, bestLeagueWinningEntries),
-          }
-        : null,
+  ? {
+      label: "Best League Placement",
+      display: bestLeaguePlacementDisplay(bestLeaguePlacement, bestLeagueWinningEntries),
+    }
+  : bestLeagueRankingFallback
+    ? {
+        label: "Best League Placement",
+        display: `#${bestLeagueRankingFallback.value}${bestLeagueRankingFallback.league ? ` - ${bestLeagueRankingFallback.league}` : ""} (${bestLeagueRankingFallback.year})`,
+      }
+    : null,
 
       divisionWinningEntries.length
   ? {

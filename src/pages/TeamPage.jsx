@@ -114,6 +114,23 @@ function uniqSortedYears(values) {
 function isMissingCupValue(v) {
   const x = norm(v)
   return !x || x === "0" || x === "—" || x === "-"
+
+  
+}
+
+function slugifyTeam(name) {
+  return s(name)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s*-\s*/g, "-")
+    .replace(/[^a-zA-Z0-9Α-Ωα-ω- ]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .toLowerCase()
+}
+
+function teamLogoSrc(teamName) {
+  return `/logos/${slugifyTeam(teamName)}.webp`
 }
 
 /* ----------------------------- scoring helpers ----------------------------- */
@@ -1182,13 +1199,36 @@ function bestLeaguePlacementDisplay(entry, entries) {
               <div className="card" style={{ padding: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <div>
-                    <div style={{ fontSize: 24, fontWeight: 1000, letterSpacing: 0.3 }}>{team.team}</div>
-                    <div style={{ marginTop: 6, color: "var(--gnfc-muted)", fontSize: 14 }}>
-                      Manager:{" "}
-                      <span style={{ color: "var(--gnfc-text)", fontWeight: 800 }}>
-                        {team.manager || "—"}
-                      </span>
-                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+  <img
+    src={teamLogoSrc(team.team)}
+    alt={`${team.team} logo`}
+    style={teamHeaderLogo}
+    onError={(e) => {
+      e.currentTarget.src = "/logos/_default-logo.webp"
+    }}
+  />
+
+  <div style={{ minWidth: 0 }}>
+    <div
+      style={{
+        fontSize: 24,
+        fontWeight: 1000,
+        letterSpacing: 0.3,
+        lineHeight: 1.1,
+      }}
+    >
+      {team.team}
+    </div>
+
+    <div style={{ marginTop: 6, color: "var(--gnfc-muted)", fontSize: 14 }}>
+      Manager:{" "}
+      <span style={{ color: "var(--gnfc-text)", fontWeight: 800 }}>
+        {team.manager || "—"}
+      </span>
+    </div>
+  </div>
+</div>
                   </div>
 
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -1676,6 +1716,18 @@ const awardTrophyLink = {
   background: "rgba(255,255,255,0.9)",
   border: "1px solid rgba(249, 115, 22, 0.22)",
   boxShadow: "0 4px 10px rgba(0,0,0,0.06)",
+}
+
+const teamHeaderLogo = {
+  width: 52,
+  height: 52,
+  objectFit: "contain",
+  borderRadius: 12,
+  background: "rgba(255,255,255,0.92)",
+  border: "1px solid rgba(5, 97, 97, 0.18)",
+  boxShadow: "0 4px 10px rgba(5, 97, 97, 0.08)",
+  flexShrink: 0,
+  padding: 4,
 }
 
 const awardTrophyImg = {

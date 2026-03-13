@@ -846,7 +846,7 @@ export default function TeamPage() {
     const clNorm = normalizeLoose(cl)
     const cupNorm = normalizeLoose(cupValue)
 
-    const isLeagueWinner = playoffsNorm.includes("winner") || playoffsNorm.includes("champion")
+    const isLeagueWinner = isRealLeagueWinnerLabel(playoffs)
     const isDivisionWinner = playoffsNorm.includes("champion")
 
     if (isLeagueWinner) {

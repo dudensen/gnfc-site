@@ -9,13 +9,10 @@ const RIVALRIES_GID = "1596230240"
 const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${RIVALRIES_GID}`
 
 // Fixed columns (0-based indexes)
-const COL_MATCHUP_NO = 0 // A
 const COL_TEAM = 1 // B
 const COL_STATS_START = 2 // C
-const COL_STATS_END_EXCL = 12 // up to L
-const COL_ROUND_TITLE = 3 // D
-const COL_LEAGUE = 14 // O
-const COL_OPPONENT = 15 // P
+const COL_STATS_END_EXCL = 12 // C:L
+const COL_LEAGUE = 13 // M (in your screenshot League is right after Score)
 const COL_TOTAL_MATCHUPS = 20 // U
 const COL_TOTAL_CATEGORIES = 22 // W
 
@@ -53,11 +50,6 @@ function teamHref(team) {
   const name = s(team)
   if (!name) return "#"
   return `/team/${encodeURIComponent(name)}`
-}
-
-function isLikelyRoundTitle(v) {
-  const t = norm(v)
-  return t.includes("week") || t.includes("round") || t.includes("matchday")
 }
 
 // Robust CSV parser (quotes, commas, newlines)
@@ -232,10 +224,6 @@ function compareTotals(aVal, bVal) {
   return aS > bS ? 1 : -1
 }
 
-// overall winner:
-// 1) more matchup wins
-// 2) if tied, more category wins
-// 3) if tied again, draw
 function getOverallWinner(aMatchups, bMatchups, aCategories, bCategories) {
   const matchCmp = compareTotals(aMatchups, bMatchups)
   if (matchCmp === 1) return "a"
@@ -379,18 +367,18 @@ function MatchupCardRivalry({ matchup, statKeys, matchupNo, open, onToggle }) {
   const aCategories = matchup.a?.cols?.[TOTAL_CATEGORIES_KEY]
   const bCategories = matchup.b?.cols?.[TOTAL_CATEGORIES_KEY]
 
-const overallWinner = getOverallWinner(
-  aMatchups,
-  bMatchups,
-  aCategories,
-  bCategories
-)
+  const overallWinner = getOverallWinner(
+    aMatchups,
+    bMatchups,
+    aCategories,
+    bCategories
+  )
 
-const matchupsCmp = compareTotals(aMatchups, bMatchups)
-const categoriesCmp = compareTotals(aCategories, bCategories)
+  const matchupsCmp = compareTotals(aMatchups, bMatchups)
+  const categoriesCmp = compareTotals(aCategories, bCategories)
 
-const aIsOverallWinner = overallWinner === "a"
-const bIsOverallWinner = overallWinner === "b"
+  const aIsOverallWinner = overallWinner === "a"
+  const bIsOverallWinner = overallWinner === "b"
 
   const { w, l, t } = useMemo(
     () => scoreWLT(matchup.a?.cols, matchup.b?.cols, statKeys),
@@ -457,18 +445,18 @@ const bIsOverallWinner = overallWinner === "b"
 
         <TeamRow team={aTeam} league={aLeague} highlight={aIsOverallWinner} />
 
-<div
-  style={{
-    margin: "6px 0 6px",
-    color: orange,
-    fontWeight: 950,
-    letterSpacing: 0.35,
-    fontSize: 20,
-    lineHeight: 1,
-  }}
->
-  VS
-</div>
+        <div
+          style={{
+            margin: "6px 0 6px",
+            color: orange,
+            fontWeight: 950,
+            letterSpacing: 0.35,
+            fontSize: 20,
+            lineHeight: 1,
+          }}
+        >
+          VS
+        </div>
 
         <TeamRow team={bTeam} league={bLeague} highlight={bIsOverallWinner} />
 
@@ -483,42 +471,42 @@ const bIsOverallWinner = overallWinner === "b"
             </thead>
             <tbody>
               <tr style={rowStyle(0)}>
-              <td
-                style={{
-                  ...tdStyle,
-                  fontWeight: 800,
-                  fontSize: 11,
-                  color: muted,
-                }}
-              >
-                Matchups
-              </td>
-              <td style={{ ...tdStyle, textAlign: "center" }}>
-                {matchupsCmp >= 0 ? <OrangePill value={aMatchups} /> : cell(aMatchups)}
-              </td>
-              <td style={{ ...tdStyle, textAlign: "center" }}>
-                {matchupsCmp <= 0 ? <OrangePill value={bMatchups} /> : cell(bMatchups)}
-              </td>
-            </tr>
+                <td
+                  style={{
+                    ...tdStyle,
+                    fontWeight: 800,
+                    fontSize: 11,
+                    color: muted,
+                  }}
+                >
+                  Matchups
+                </td>
+                <td style={{ ...tdStyle, textAlign: "center" }}>
+                  {matchupsCmp >= 0 ? <OrangePill value={aMatchups} /> : cell(aMatchups)}
+                </td>
+                <td style={{ ...tdStyle, textAlign: "center" }}>
+                  {matchupsCmp <= 0 ? <OrangePill value={bMatchups} /> : cell(bMatchups)}
+                </td>
+              </tr>
 
               <tr style={rowStyle(1)}>
-              <td
-                style={{
-                  ...tdStyle,
-                  fontWeight: 800,
-                  fontSize: 11,
-                  color: muted,
-                }}
-              >
-                Categories
-              </td>
-              <td style={{ ...tdStyle, textAlign: "center" }}>
-                {categoriesCmp >= 0 ? <OrangePill value={aCategories} /> : cell(aCategories)}
-              </td>
-              <td style={{ ...tdStyle, textAlign: "center" }}>
-                {categoriesCmp <= 0 ? <OrangePill value={bCategories} /> : cell(bCategories)}
-              </td>
-            </tr>
+                <td
+                  style={{
+                    ...tdStyle,
+                    fontWeight: 800,
+                    fontSize: 11,
+                    color: muted,
+                  }}
+                >
+                  Categories
+                </td>
+                <td style={{ ...tdStyle, textAlign: "center" }}>
+                  {categoriesCmp >= 0 ? <OrangePill value={aCategories} /> : cell(aCategories)}
+                </td>
+                <td style={{ ...tdStyle, textAlign: "center" }}>
+                  {categoriesCmp <= 0 ? <OrangePill value={bCategories} /> : cell(bCategories)}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -581,24 +569,22 @@ const bIsOverallWinner = overallWinner === "b"
             </thead>
             <tbody>
               {statKeys.map((k, idx) => {
-              const aVal = matchup.a?.cols?.[k]
-              const bVal = matchup.b?.cols?.[k]
-              const cmp = compareStat(aVal, bVal, k)
+                const aVal = matchup.a?.cols?.[k]
+                const bVal = matchup.b?.cols?.[k]
+                const cmp = compareStat(aVal, bVal, k)
 
-              return (
-                <tr key={k} style={rowStyle(idx)}>
-                  <td style={{ ...tdStyle, fontWeight: 900 }}>{k}</td>
-
-                  <td style={{ ...tdStyle, textAlign: "center" }}>
-                    {cmp >= 0 ? <OrangePill value={aVal} /> : cell(aVal)}
-                  </td>
-
-                  <td style={{ ...tdStyle, textAlign: "center" }}>
-                    {cmp <= 0 ? <OrangePill value={bVal} /> : cell(bVal)}
-                  </td>
-                </tr>
-              )
-            })}
+                return (
+                  <tr key={k} style={rowStyle(idx)}>
+                    <td style={{ ...tdStyle, fontWeight: 900 }}>{k}</td>
+                    <td style={{ ...tdStyle, textAlign: "center" }}>
+                      {cmp >= 0 ? <OrangePill value={aVal} /> : cell(aVal)}
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: "center" }}>
+                      {cmp <= 0 ? <OrangePill value={bVal} /> : cell(bVal)}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -616,7 +602,7 @@ export default function RivalriesPage() {
   const [err, setErr] = useState("")
   const [rawStatKeys, setRawStatKeys] = useState([])
   const [rounds, setRounds] = useState([])
-  const [openRounds, setOpenRounds] = useState({})
+  const [openRounds, setOpenRounds] = useState({ Rivalries: true })
   const [openCards, setOpenCards] = useState({})
 
   const statKeys = useMemo(
@@ -653,74 +639,14 @@ export default function RivalriesPage() {
 
         setRawStatKeys(headersCL)
 
-        let currentRound = ""
-        const roundMap = new Map()
-        const autoCounterByRound = new Map()
-        const maxNumByRound = new Map()
-        const pendingTeamsByRound = new Map()
-
-        function ensureRound(roundKey) {
-          if (!roundMap.has(roundKey)) roundMap.set(roundKey, new Map())
-          if (!autoCounterByRound.has(roundKey)) {
-            autoCounterByRound.set(roundKey, 1)
-          }
-          if (!maxNumByRound.has(roundKey)) maxNumByRound.set(roundKey, 0)
-          if (!pendingTeamsByRound.has(roundKey)) {
-            pendingTeamsByRound.set(roundKey, [])
-          }
-        }
-
-        function flushPending(roundKey) {
-          const pend = pendingTeamsByRound.get(roundKey) || []
-          if (pend.length < 2) return pendingTeamsByRound.set(roundKey, [])
-
-          for (let i = 0; i + 1 < pend.length; i += 2) {
-            const a = pend[i]
-            const b = pend[i + 1]
-            const maxNum = maxNumByRound.get(roundKey) || 0
-            const nextAuto = autoCounterByRound.get(roundKey) || 1
-            const displayNo = maxNum + nextAuto
-
-            autoCounterByRound.set(roundKey, nextAuto + 1)
-
-            const key = `auto_${displayNo}_${i}`
-            const mMap = roundMap.get(roundKey)
-
-            if (!mMap.has(key)) {
-              mMap.set(key, {
-                displayNo,
-                order: 100000 + displayNo,
-                teams: [],
-              })
-            }
-
-            mMap.get(key).teams.push(a, b)
-          }
-
-          if (pend.length % 2 === 1) {
-            pendingTeamsByRound.get(roundKey).push(pend[pend.length - 1])
-          }
-        }
+        const teamRows = []
 
         for (let i = 2; i < grid.length; i++) {
           const row = grid[i] || []
           if (isEmptyRow(row)) continue
 
-          const colA = s(row[COL_MATCHUP_NO])
-          const colB = s(row[COL_TEAM])
-          const colD = s(row[COL_ROUND_TITLE])
-
-          const matchupNo = toNumLoose(colA)
-
-          if (colD && isLikelyRoundTitle(colD)) {
-            if (currentRound) flushPending(currentRound)
-            currentRound = colD
-            ensureRound(currentRound)
-            continue
-          }
-
-          const roundKey = currentRound || "Rivalries"
-          ensureRound(roundKey)
+          const team = s(row[COL_TEAM])
+          if (!team) continue
 
           const statsCL = row.slice(COL_STATS_START, COL_STATS_END_EXCL)
           const cols = {}
@@ -735,57 +661,34 @@ export default function RivalriesPage() {
           cols[TOTAL_MATCHUPS_KEY] = s(row[COL_TOTAL_MATCHUPS])
           cols[TOTAL_CATEGORIES_KEY] = s(row[COL_TOTAL_CATEGORIES])
 
-          if (matchupNo && colB) {
-            flushPending(roundKey)
-            maxNumByRound.set(
-              roundKey,
-              Math.max(maxNumByRound.get(roundKey) || 0, matchupNo)
-            )
-
-            const mMap = roundMap.get(roundKey)
-            const key = `num_${matchupNo}`
-
-            if (!mMap.has(key)) {
-              mMap.set(key, {
-                displayNo: matchupNo,
-                order: matchupNo,
-                teams: [],
-              })
-            }
-
-            mMap.get(key).teams.push({ team: colB, cols })
-          } else if (!matchupNo && colB) {
-            pendingTeamsByRound.get(roundKey).push({ team: colB, cols })
-            if (pendingTeamsByRound.get(roundKey).length >= 2) {
-              flushPending(roundKey)
-            }
-          }
+          teamRows.push({
+            team,
+            cols,
+          })
         }
 
-        if (currentRound) flushPending(currentRound)
+        const matchups = []
+        for (let i = 0; i + 1 < teamRows.length; i += 2) {
+          const a = teamRows[i]
+          const b = teamRows[i + 1]
 
-        const outRounds = Array.from(roundMap.entries()).map(
-          ([roundTitle, mMap]) => {
-            const matchups = Array.from(mMap.values())
-              .sort((a, b) => a.order - b.order)
-              .map((m) => ({
-                matchupNo: m.displayNo,
-                matchup: {
-                  a: m.teams?.[0] || null,
-                  b: m.teams?.[1] || null,
-                },
-              }))
+          if (!a || !b) continue
+          if (norm(a.team) === norm(b.team)) continue
 
-            return { roundTitle, matchups }
-          }
-        )
+          matchups.push({
+            matchupNo: matchups.length + 1,
+            matchup: { a, b },
+          })
+        }
 
         if (!alive) return
 
-        setRounds(outRounds)
-        if (outRounds.length) {
-          setOpenRounds({ [outRounds[0].roundTitle]: true })
-        }
+        setRounds([
+          {
+            roundTitle: "Rivalries",
+            matchups,
+          },
+        ])
       } catch (e) {
         if (!alive) return
         setErr(String(e?.message || e))
@@ -855,9 +758,7 @@ export default function RivalriesPage() {
           marginBottom: 14,
         }}
       >
-        <div
-          style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <img
             src="/rivalries.png"
             alt="Rivalries"
@@ -963,9 +864,7 @@ export default function RivalriesPage() {
                             matchup={m.matchup}
                             statKeys={statKeys}
                             open={isOpen}
-                            onToggle={() =>
-                              toggleCard(r.roundTitle, m.matchupNo)
-                            }
+                            onToggle={() => toggleCard(r.roundTitle, m.matchupNo)}
                           />
                         )
                       })}

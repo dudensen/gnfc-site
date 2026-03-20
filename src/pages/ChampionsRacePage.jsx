@@ -296,15 +296,6 @@ function extractBlocksFromCsvRows(csvRows) {
   return blocks
 }
 
-function buildChampionFlatHeaders(width) {
-  const defaults = ["#", "Team", "W", "L", "T", "W", "L", "T", "W%", "W", "Cats", "Gen"]
-  if (width <= defaults.length) return defaults.slice(0, width)
-
-  const out = [...defaults]
-  while (out.length < width) out.push("")
-  return out
-}
-
 /* ----------------------------- playoffs extraction ----------------------------- */
 
 function normalizeRoundTitle(x) {
@@ -367,6 +358,24 @@ function buildPlayoffsSectionsCsv(rows, cols, leagueKey = "") {
   sections.sort((a, b) => order.indexOf(a.round) - order.indexOf(b.round))
 
   return sections
+}
+
+/* ----------------------------- podium helpers ----------------------------- */
+
+function buildPodiumFromBlock(block) {
+  const rows = block?.rows || []
+  const teamCol = block?.teamCol ?? 1
+
+  const top3 = rows
+    .filter(row => s(row?.[teamCol]))
+    .slice(0, 3)
+    .map((row, idx) => ({
+      place: idx + 1,
+      team: s(row?.[teamCol]),
+      rankValue: s(row?.[0]),
+    }))
+
+  return top3
 }
 
 /* ----------------------------- UI bits ----------------------------- */
@@ -605,6 +614,156 @@ function MatchupCardCupLike({ matchup, statKeys, matchupNo, open, onToggle }) {
   )
 }
 
+function PodiumCard({ title, items }) {
+  if (!items?.length) return null
+
+  const first = items.find(x => x.place === 1)
+  const second = items.find(x => x.place === 2)
+  const third = items.find(x => x.place === 3)
+
+  const trophy = (
+    <img
+      src="/public/awards/division-winner.webp"
+      alt="Category Champion"
+      style={{
+        width: 20,
+        height: 20,
+        objectFit: "contain",
+        flex: "0 0 auto",
+      }}
+    />
+  )
+
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      <div style={cardHeader}>
+        <div className="section-title" style={{ marginBottom: 0 }}>
+          {title}
+        </div>
+      </div>
+
+      <div
+        style={{
+          padding: 14,
+          display: "grid",
+          gap: 12,
+          gridTemplateColumns: "1fr",
+        }}
+      >
+        {first ? (
+          <div
+            style={{
+              border: "1px solid rgba(216,120,32,0.42)",
+              background: "rgba(216,120,32,0.10)",
+              borderRadius: 16,
+              padding: "14px 14px",
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: 0.6, color: "#db7d12", marginBottom: 6 }}>
+              1ST PLACE
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              {trophy}
+              <Link
+                to={teamHref(first.team)}
+                className="teamLinkHover"
+                style={{
+                  display: "inline-block",
+                  textDecoration: "none",
+                  color: "inherit",
+                  fontWeight: 950,
+                  fontSize: 20,
+                  lineHeight: 1.1,
+                  minWidth: 0,
+                }}
+              >
+                {first.team}
+              </Link>
+            </div>
+          </div>
+        ) : null}
+
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          }}
+        >
+          {second ? (
+            <div
+              style={{
+                border: "1px solid rgba(0,96,96,0.35)",
+                background: "rgba(0,96,96,0.10)",
+                borderRadius: 14,
+                padding: "12px 14px",
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: 0.5, color: "var(--gnfc-muted)", marginBottom: 6 }}>
+                2ND PLACE
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+
+                <Link
+                  to={teamHref(second.team)}
+                  className="teamLinkHover"
+                  style={{
+                    display: "inline-block",
+                    textDecoration: "none",
+                    color: "inherit",
+                    fontWeight: 900,
+                    fontSize: 15,
+                    lineHeight: 1.15,
+                    minWidth: 0,
+                  }}
+                >
+                  {second.team}
+                </Link>
+              </div>
+            </div>
+          ) : null}
+
+          {third ? (
+            <div
+              style={{
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.04)",
+                borderRadius: 14,
+                padding: "12px 14px",
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: 0.5, color: "var(--gnfc-muted)", marginBottom: 6 }}>
+                3RD PLACE
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+
+                <Link
+                  to={teamHref(third.team)}
+                  className="teamLinkHover"
+                  style={{
+                    display: "inline-block",
+                    textDecoration: "none",
+                    color: "inherit",
+                    fontWeight: 900,
+                    fontSize: 15,
+                    lineHeight: 1.15,
+                    minWidth: 0,
+                  }}
+                >
+                  {third.team}
+                </Link>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function renderTableCell(value, cIdx, block) {
   const v = cell(value)
   const isTeam = cIdx === block.teamCol
@@ -681,6 +840,13 @@ export default function ChampionsRacePage() {
   }, [])
 
   const blocks = useMemo(() => extractBlocksFromCsvRows(csvRows), [csvRows])
+
+  const podiumBlocks = useMemo(() => {
+    return blocks.map(block => ({
+      title: block.title,
+      items: buildPodiumFromBlock(block),
+    }))
+  }, [blocks])
 
   const finalsSection = useMemo(() => {
     const cleaned = (playoffsRows || []).filter(r => !isEmptyRowObj(r))
@@ -773,6 +939,35 @@ export default function ChampionsRacePage() {
               </div>
             ) : (
               <>
+                {!!podiumBlocks.length && (
+                  <>
+                    <div className="sectionTitle" style={{ marginTop: 0 }}>
+                      <span className="badge">Podium</span>
+                      <span style={{ color: "var(--gnfc-muted)", fontSize: 13 }}>
+                        Top 3 teams from each champion table
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 16,
+                        gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+                        alignItems: "start",
+                        marginBottom: 18,
+                      }}
+                    >
+                      {podiumBlocks.map((block, idx) => (
+                        <PodiumCard
+                          key={`podium-${block.title}-${idx}`}
+                          title={block.title}
+                          items={block.items}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+
                 <div className="sectionTitle" style={{ marginTop: 0 }}>
                   <span className="badge">Tables</span>
                   <span style={{ color: "var(--gnfc-muted)", fontSize: 13 }}>
@@ -805,146 +1000,146 @@ export default function ChampionsRacePage() {
                         </div>
 
                         <div style={{ overflowX: "hidden" }}>
-  <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "auto" }}>
-    <colgroup>
-      <col style={{ width: "7%" }} />
-      <col style={{ width: "26%" }} />
-      <col style={{ width: "6.7%" }} />
-      <col style={{ width: "6.7%" }} />
-      <col style={{ width: "6.7%" }} />
-      <col style={{ width: "6.7%" }} />
-      <col style={{ width: "6.7%" }} />
-      <col style={{ width: "6.7%" }} />
-      <col style={{ width: "8%" }} />
-      <col style={{ width: "7%" }} />
-      <col style={{ width: "8%" }} />
-      <col style={{ width: "7%" }} />
-    </colgroup>
+                          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "auto" }}>
+                            <colgroup>
+                              <col style={{ width: "7%" }} />
+                              <col style={{ width: "26%" }} />
+                              <col style={{ width: "6.7%" }} />
+                              <col style={{ width: "6.7%" }} />
+                              <col style={{ width: "6.7%" }} />
+                              <col style={{ width: "6.7%" }} />
+                              <col style={{ width: "6.7%" }} />
+                              <col style={{ width: "6.7%" }} />
+                              <col style={{ width: "8%" }} />
+                              <col style={{ width: "7%" }} />
+                              <col style={{ width: "8%" }} />
+                              <col style={{ width: "7%" }} />
+                            </colgroup>
 
-    <thead>
-      <tr style={{ background: "rgba(0,0,0,0.22)" }}>
-        <th
-          rowSpan={2}
-          style={{
-            ...thStyle,
-            textAlign: "left",
-            fontWeight: 900,
-            fontSize: 10,
-            padding: "7px 6px",
-            whiteSpace: "nowrap",
-          }}
-        >
-          #
-        </th>
+                            <thead>
+                              <tr style={{ background: "rgba(0,0,0,0.22)" }}>
+                                <th
+                                  rowSpan={2}
+                                  style={{
+                                    ...thStyle,
+                                    textAlign: "left",
+                                    fontWeight: 900,
+                                    fontSize: 10,
+                                    padding: "7px 6px",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  #
+                                </th>
 
-        <th
-          rowSpan={2}
-          style={{
-            ...thStyle,
-            textAlign: "left",
-            fontWeight: 900,
-            fontSize: 10,
-            padding: "7px 8px",
-            whiteSpace: "nowrap",
-          }}
-        >
-          Team
-        </th>
+                                <th
+                                  rowSpan={2}
+                                  style={{
+                                    ...thStyle,
+                                    textAlign: "left",
+                                    fontWeight: 900,
+                                    fontSize: 10,
+                                    padding: "7px 8px",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  Team
+                                </th>
 
-        <th
-          colSpan={3}
-          style={{
-            ...thStyle,
-            textAlign: "center",
-            fontWeight: 900,
-            fontSize: 11,
-            padding: "7px 6px",
-            whiteSpace: "nowrap",
-          }}
-        >
-          Wins
-        </th>
+                                <th
+                                  colSpan={3}
+                                  style={{
+                                    ...thStyle,
+                                    textAlign: "center",
+                                    fontWeight: 900,
+                                    fontSize: 11,
+                                    padding: "7px 6px",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  Wins
+                                </th>
 
-        <th
-          colSpan={4}
-          style={{
-            ...thStyle,
-            textAlign: "center",
-            fontWeight: 900,
-            fontSize: 11,
-            padding: "7px 6px",
-            whiteSpace: "nowrap",
-          }}
-        >
-          Categories
-        </th>
+                                <th
+                                  colSpan={4}
+                                  style={{
+                                    ...thStyle,
+                                    textAlign: "center",
+                                    fontWeight: 900,
+                                    fontSize: 11,
+                                    padding: "7px 6px",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  Categories
+                                </th>
 
-        <th
-          colSpan={3}
-          style={{
-            ...thStyle,
-            textAlign: "center",
-            fontWeight: 900,
-            fontSize: 11,
-            padding: "7px 6px",
-            whiteSpace: "nowrap",
-          }}
-        >
-          vs All teams
-        </th>
-      </tr>
+                                <th
+                                  colSpan={3}
+                                  style={{
+                                    ...thStyle,
+                                    textAlign: "center",
+                                    fontWeight: 900,
+                                    fontSize: 11,
+                                    padding: "7px 6px",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  vs All teams
+                                </th>
+                              </tr>
 
-      <tr style={{ background: "rgba(0,0,0,0.16)" }}>
-        {headers.slice(2).map((h, i) => (
-          <th
-            key={`${block.title}-h-${i}`}
-            style={{
-              ...thStyle,
-              textAlign: "center",
-              fontWeight: 900,
-              fontSize: 10,
-              padding: "7px 6px",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {h}
-          </th>
-        ))}
-      </tr>
-    </thead>
+                              <tr style={{ background: "rgba(0,0,0,0.16)" }}>
+                                {headers.slice(2).map((h, i) => (
+                                  <th
+                                    key={`${block.title}-h-${i}`}
+                                    style={{
+                                      ...thStyle,
+                                      textAlign: "center",
+                                      fontWeight: 900,
+                                      fontSize: 10,
+                                      padding: "7px 6px",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {h}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
 
-    <tbody>
-      {block.rows.map((row, rIdx) => (
-        <tr key={`${block.title}-r-${rIdx}`} style={rowStyle(rIdx)}>
-          {row.map((v, cIdx) => {
-            const isTeam = cIdx === block.teamCol
-            const isFirst = cIdx === 0
+                            <tbody>
+                              {block.rows.map((row, rIdx) => (
+                                <tr key={`${block.title}-r-${rIdx}`} style={rowStyle(rIdx)}>
+                                  {row.map((v, cIdx) => {
+                                    const isTeam = cIdx === block.teamCol
+                                    const isFirst = cIdx === 0
 
-            return (
-              <td
-                key={`${block.title}-${rIdx}-${cIdx}`}
-                style={{
-                  ...tdStyle,
-                  textAlign: cIdx <= 1 ? "left" : "center",
-                  whiteSpace: isTeam ? "normal" : "nowrap",
-                  wordBreak: "normal",
-                  overflowWrap: "normal",
-                  fontWeight: isTeam || isFirst ? 900 : 700,
-                  color: isFirst ? "var(--gnfc-muted)" : undefined,
-                  padding: isTeam ? "8px 10px" : "8px 6px",
-                  fontSize: 12,
-                  verticalAlign: "top",
-                }}
-              >
-                {renderTableCell(v, cIdx, block)}
-              </td>
-            )
-          })}
-        </tr>
-      ))}
-    </tbody>
-  </table>
-</div>
+                                    return (
+                                      <td
+                                        key={`${block.title}-${rIdx}-${cIdx}`}
+                                        style={{
+                                          ...tdStyle,
+                                          textAlign: cIdx <= 1 ? "left" : "center",
+                                          whiteSpace: isTeam ? "normal" : "nowrap",
+                                          wordBreak: "normal",
+                                          overflowWrap: "normal",
+                                          fontWeight: isTeam || isFirst ? 900 : 700,
+                                          color: isFirst ? "var(--gnfc-muted)" : undefined,
+                                          padding: isTeam ? "8px 10px" : "8px 6px",
+                                          fontSize: 12,
+                                          verticalAlign: "top",
+                                        }}
+                                      >
+                                        {renderTableCell(v, cIdx, block)}
+                                      </td>
+                                    )
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     )
                   })}

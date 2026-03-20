@@ -24,6 +24,19 @@ const TROPHY_IMAGES = {
   cup: "/awards/cup.webp",
 }
 
+const TROPHY_GRAVITY = {
+  divisionWinner: 1,
+
+  championA: 3,
+  championsLeague: 4,
+  cup: 5,
+  leagueWinnerA: 6,
+  championB: 7,
+  leagueWinnerB: 8,
+  championG: 9,
+  leagueWinnerG: 20,
+}
+
 function csvExportUrl(sheetId, gid) {
   return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`
 }
@@ -869,43 +882,50 @@ export default function TeamPage() {
   }
 
   return [
-  {
-    key: "divisionWinner",
-    label: "Division Winner",
-    count: divisionWinner,
-    iconType: "divisionWinner",
-  },
-  {
-    key: "leagueWinnerA",
-    label: "League Winner A",
-    count: leagueWinnerA,
-    iconType: "leagueA",
-  },
-  {
-    key: "leagueWinnerB",
-    label: "League Winner B",
-    count: leagueWinnerB,
-    iconType: "leagueB",
-  },
-  {
-    key: "leagueWinnerG",
-    label: "League Winner Γ",
-    count: leagueWinnerG,
-    iconType: "leagueG",
-  },
-  {
-    key: "championsLeague",
-    label: "Champions League",
-    count: championsLeague,
-    iconType: "cl",
-  },
-  {
-    key: "cup",
-    label: "Cup",
-    count: cup,
-    iconType: "cup",
-  },
-].filter((item) => item.count > 0)
+    {
+      key: "divisionWinner",
+      label: "Division Champion",
+      count: divisionWinner,
+      iconType: "divisionWinner",
+    },
+    {
+      key: "championsLeague",
+      label: "Champions League Winner",
+      count: championsLeague,
+      iconType: "cl",
+    },
+    {
+      key: "cup",
+      label: "Cup Winner",
+      count: cup,
+      iconType: "cup",
+    },
+    {
+      key: "leagueWinnerA",
+      label: "League A Winner",
+      count: leagueWinnerA,
+      iconType: "leagueA",
+    },
+    {
+      key: "leagueWinnerB",
+      label: "League B Winner",
+      count: leagueWinnerB,
+      iconType: "leagueB",
+    },
+    {
+      key: "leagueWinnerG",
+      label: "League Γ Winner",
+      count: leagueWinnerG,
+      iconType: "leagueG",
+    },
+  ]
+    .filter((item) => item.count > 0)
+    .sort((a, b) => {
+      const ga = TROPHY_GRAVITY[a.key] ?? 999
+      const gb = TROPHY_GRAVITY[b.key] ?? 999
+      if (ga !== gb) return ga - gb
+      return a.label.localeCompare(b.label)
+    })
 }, [historyParsed, team?.team])
 
   const regularSeasonPerformance = useMemo(() => {

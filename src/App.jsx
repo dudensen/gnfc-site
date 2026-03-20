@@ -10,6 +10,7 @@ import ChampionsLeaguePage from "./pages/ChampionsLeaguePage"
 import GnfcCupPage from "./pages/GnfcCupPage.jsx"
 import ChampionsRacePage from "./pages/ChampionsRacePage.jsx"
 import RivalriesPage from "./pages/RivalriesPage"
+import ConstitutionPage from "./pages/ConstitutionPage"
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
       <Route path="/cup" element={<GnfcCupPage />} />
       <Route path="/championsrace" element={<ChampionsRacePage />} />
       <Route path="/rivalries" element={<RivalriesPage />} />
+      <Route path="/constitution" element={<ConstitutionPage />} />
       <Route path="*" element={<Home />} />
     </Routes>
   )

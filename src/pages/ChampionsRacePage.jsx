@@ -623,7 +623,7 @@ function PodiumCard({ title, items }) {
 
   const trophy = (
     <img
-      src="/public/awards/division-winner.webp"
+      src="/awards/division-winner.webp"
       alt="Category Champion"
       style={{
         width: 20,

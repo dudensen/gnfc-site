@@ -943,9 +943,7 @@ export default function ChampionsRacePage() {
                   <>
                     <div className="sectionTitle" style={{ marginTop: 0 }}>
                       <span className="badge">Podium</span>
-                      <span style={{ color: "var(--gnfc-muted)", fontSize: 13 }}>
-                        Top 3 teams from each champion table
-                      </span>
+
                     </div>
 
                     <div

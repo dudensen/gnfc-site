@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useTeams } from "../hooks/useTeams"
+import { FANTRAX_LEAGUE_IDS } from "../config/fantraxLeagueIds"
 
 /* ----------------------------- config ----------------------------- */
 
@@ -11,14 +12,14 @@ const SHEET_ID = import.meta.env.VITE_GNFC_SHEET_ID || "1Z8EbGi1rGDhg7dAQoPypJ2F
 const GEN_GID_BY_DIV = {
   A: "1782234437",
   B: "248040938",
-  "Γ": "393014208"
+  "Γ": "393014208",
 }
 
 // ✅ Weekly standings sheets
 const WK_GID_BY_DIV = {
   A: "559899738", // WkA
   B: "1280251660", // WkB
-  "Γ": "387039955" // WkΓ
+  "Γ": "387039955", // WkΓ
 }
 
 /* ----------------------------- tiny utils ----------------------------- */
@@ -49,7 +50,6 @@ function norm(x) {
 }
 
 function stripPct(x) {
-  // handles "54.3%", "54,3%", "0.543", "0,543"
   const t = String(x ?? "").replace(/[％]/g, "%").trim()
   if (!t) return null
   const y = t.replace(",", ".")
@@ -61,6 +61,58 @@ function stripPct(x) {
   return n
 }
 
+function fixFantraxText(value) {
+  const text = String(value ?? "")
+  try {
+    return decodeURIComponent(escape(text))
+  } catch {
+    return text
+  }
+}
+
+function cleanLeagueDisplayName(value) {
+  return fixFantraxText(value)
+    .replace(/^GNFC\s*/i, "")
+    .replace(/\s*-\s*/g, " - ")
+    .trim()
+}
+
+function normalizeRouteLeagueKey(value) {
+  const raw = s(value).toUpperCase().replace(/^GNFC\s+/, "")
+  const match = raw.match(/([AΑBΒΓG])\s*([0-9]+)/)
+  if (!match) return raw
+
+  let letter = match[1]
+  const number = match[2]
+
+  if (letter === "Α") letter = "A"
+  if (letter === "Β") letter = "B"
+  if (letter === "G") letter = "Γ"
+
+  return `${letter}${number}`
+}
+
+function extractLeagueKeyFromLeagueName(name, availableKeys = []) {
+  const text = cleanLeagueDisplayName(name)
+  const match = text.match(/([AΑBΒΓG])\s*([0-9]+)/i)
+  if (!match) return null
+
+  const rawKey = normalizeRouteLeagueKey(`${match[1]}${match[2]}`)
+  if (availableKeys.includes(rawKey)) return rawKey
+
+  const variants = [
+    rawKey,
+    rawKey.replace(/^A/, "Α"),
+    rawKey.replace(/^Α/, "A"),
+    rawKey.replace(/^B/, "Β"),
+    rawKey.replace(/^Β/, "B"),
+    rawKey.replace(/^Γ/, "G"),
+    rawKey.replace(/^G/, "Γ"),
+  ]
+
+  return variants.find(v => availableKeys.includes(v)) || rawKey
+}
+
 /* ----------------------------- General/Weekly: header rename + hidden columns ---- */
 
 function cleanHeader(h) {
@@ -70,7 +122,6 @@ function cleanHeader(h) {
   if (x.includes("WEEKLY STANDINGS WEEKLY RANKING") && x.includes("Official Ranking")) return "Rank"
   if (x.includes("POINTS SYSTEM") && x.includes("W% points")) return "W% points"
 
-  // ✅ weekly FG% rename
   if (norm(x) === "weekly statistics fg%") return "FG%"
   if (norm(x) === "weekly statistics rankings fg%") return "FG% Rank"
 
@@ -90,7 +141,7 @@ const HIDE_GEN_COLS = new Set([
   "blk",
   "to",
   "general statistics fg%",
-  "general statistics rankings gp"
+  "general statistics rankings gp",
 ])
 
 const HIDE_PREFIXES = ["general statistics", "general statistics rankings"]
@@ -160,14 +211,13 @@ async function fetchGvizTable({ sheetId, gid, mode = "general" }) {
   const headers = keepIdx.map(i => headers0[i])
   const outRows = rows0.map(r => keepIdx.map(i => r?.[i] ?? ""))
 
-  // ✅ WEEKLY: keep columns only up to the FIRST "TO"
   if (mode === "weekly") {
     const firstToIdx = headers.findIndex(h => norm(h) === "to")
     if (firstToIdx !== -1) {
       const cut = firstToIdx + 1
       return {
         headers: headers.slice(0, cut),
-        rows: outRows.map(r => r.slice(0, cut))
+        rows: outRows.map(r => r.slice(0, cut)),
       }
     }
   }
@@ -197,7 +247,7 @@ function rankPill(v) {
     color: "#000",
     background: "rgba(203,213,225,0.90)",
     border: "1px solid rgba(0,0,0,0.22)",
-    boxShadow: "0 1px 0 rgba(0,0,0,0.10)"
+    boxShadow: "0 1px 0 rgba(0,0,0,0.10)",
   }
 
   if (isGreen) style.background = "rgba(34,197,94,0.92)"
@@ -221,7 +271,7 @@ function TogglePill({ active, children, onClick }) {
         fontWeight: 900,
         fontSize: 12,
         cursor: "pointer",
-        whiteSpace: "nowrap"
+        whiteSpace: "nowrap",
       }}
       aria-pressed={active}
     >
@@ -236,13 +286,11 @@ function parseSortableValue(v) {
   const t = s(v)
   if (!t || t === "—") return { type: "empty", n: null, s: "" }
 
-  // Percent-like
   if (t.includes("%") || /fg%|ft%|w%/i.test(t)) {
     const p = stripPct(t)
     if (p != null) return { type: "num", n: p, s: t }
   }
 
-  // Plain number (including commas)
   const num = Number(t.replace(/,/g, ""))
   if (Number.isFinite(num)) return { type: "num", n: num, s: t }
 
@@ -261,61 +309,20 @@ function SortIcon({ active, dir }) {
 
 export default function DivisionPage() {
   const navigate = useNavigate()
-  const { div } = useParams() // "A" | "B" | "Γ"
+  const { div } = useParams()
   const division = decodeURIComponent(div || "")
   const { loading, error, teams } = useTeams()
 
-  // ✅ standings mode switch
-  const [standingsMode, setStandingsMode] = useState("general") // "general" | "weekly"
+  const [leagueNameMap, setLeagueNameMap] = useState({})
 
-  // ✅ Standings state (General or Weekly)
+  const [standingsMode, setStandingsMode] = useState("general")
   const [genLoading, setGenLoading] = useState(false)
   const [genError, setGenError] = useState("")
   const [genHeaders, setGenHeaders] = useState([])
   const [genRows, setGenRows] = useState([])
 
   const [selectedLeague, setSelectedLeague] = useState("")
-
-  // ✅ sorting state for standings table
   const [sortKey, setSortKey] = useState({ col: -1, dir: "asc" })
-
-  useEffect(() => {
-    const gid = standingsMode === "weekly" ? WK_GID_BY_DIV[division] : GEN_GID_BY_DIV[division]
-
-    if (!gid) {
-      setGenHeaders([])
-      setGenRows([])
-      setGenError("")
-      return
-    }
-
-    let alive = true
-    ;(async () => {
-      try {
-        setGenLoading(true)
-        setGenError("")
-        const out = await fetchGvizTable({ sheetId: SHEET_ID, gid, mode: standingsMode })
-        if (!alive) return
-        setGenHeaders(out.headers)
-        setGenRows(out.rows)
-
-        // default sort by Rank if present
-        const rankIdx = out.headers.findIndex(h => norm(h) === "rank")
-        setSortKey(rankIdx !== -1 ? { col: rankIdx, dir: "asc" } : { col: -1, dir: "asc" })
-      } catch (e) {
-        if (!alive) return
-        setGenError(e?.message || "Failed to load standings")
-        setGenHeaders([])
-        setGenRows([])
-      } finally {
-        if (alive) setGenLoading(false)
-      }
-    })()
-
-    return () => {
-      alive = false
-    }
-  }, [division, standingsMode])
 
   const leagues = useMemo(() => {
     const filtered = teams.filter(t => t.division === division)
@@ -340,6 +347,96 @@ export default function DivisionPage() {
     return { leagueKeys, out, totalTeams: filtered.length }
   }, [teams, division])
 
+  useEffect(() => {
+    let alive = true
+
+    ;(async () => {
+      try {
+        const availableKeys = Array.from(
+          new Set([
+            ...Object.keys(leagues.out || {}),
+            ...teams.map(t => s(t.league)).filter(Boolean),
+          ])
+        )
+
+        const results = await Promise.all(
+          (FANTRAX_LEAGUE_IDS || []).map(async (leagueId) => {
+            try {
+              const res = await fetch(
+                `https://www.fantrax.com/fxea/general/getLeagueInfo?leagueId=${leagueId}`
+              )
+              if (!res.ok) throw new Error(`Failed Fantrax request for ${leagueId}`)
+
+              const data = await res.json()
+              const leagueName = cleanLeagueDisplayName(data?.leagueName || "")
+              const key = extractLeagueKeyFromLeagueName(leagueName, availableKeys)
+
+              if (!key || !leagueName) return null
+              return [key, leagueName]
+            } catch {
+              return null
+            }
+          })
+        )
+
+        if (!alive) return
+
+        const nextMap = {}
+        for (const item of results) {
+          if (!item) continue
+          const [key, name] = item
+          nextMap[key] = name
+        }
+
+        setLeagueNameMap(nextMap)
+      } catch {
+        if (!alive) return
+        setLeagueNameMap({})
+      }
+    })()
+
+    return () => {
+      alive = false
+    }
+  }, [leagues.out, teams])
+
+  useEffect(() => {
+    const gid = standingsMode === "weekly" ? WK_GID_BY_DIV[division] : GEN_GID_BY_DIV[division]
+
+    if (!gid) {
+      setGenHeaders([])
+      setGenRows([])
+      setGenError("")
+      return
+    }
+
+    let alive = true
+    ;(async () => {
+      try {
+        setGenLoading(true)
+        setGenError("")
+        const out = await fetchGvizTable({ sheetId: SHEET_ID, gid, mode: standingsMode })
+        if (!alive) return
+        setGenHeaders(out.headers)
+        setGenRows(out.rows)
+
+        const rankIdx = out.headers.findIndex(h => norm(h) === "rank")
+        setSortKey(rankIdx !== -1 ? { col: rankIdx, dir: "asc" } : { col: -1, dir: "asc" })
+      } catch (e) {
+        if (!alive) return
+        setGenError(e?.message || "Failed to load standings")
+        setGenHeaders([])
+        setGenRows([])
+      } finally {
+        if (alive) setGenLoading(false)
+      }
+    })()
+
+    return () => {
+      alive = false
+    }
+  }, [division, standingsMode])
+
   const teamColIdx = useMemo(() => {
     if (!genHeaders?.length) return -1
     const candidates = ["team", "ομαδα", "ομάδα", "club", "squad"]
@@ -354,7 +451,6 @@ export default function DivisionPage() {
     return genHeaders.findIndex(h => norm(h) === "league ranking")
   }, [genHeaders])
 
-  // ✅ sorted rows for standings
   const sortedStandingsRows = useMemo(() => {
     const rows = Array.isArray(genRows) ? [...genRows] : []
     const { col, dir } = sortKey
@@ -364,19 +460,19 @@ export default function DivisionPage() {
       const va = parseSortableValue(a?.[col])
       const vb = parseSortableValue(b?.[col])
 
-      // empties last
       if (va.type === "empty" && vb.type === "empty") return 0
       if (va.type === "empty") return 1
       if (vb.type === "empty") return -1
 
-      // numbers first if both numbers
       if (va.type === "num" && vb.type === "num") {
         const d = va.n - vb.n
         return dir === "asc" ? d : -d
       }
 
-      // otherwise string compare
-      const d = String(va.s).localeCompare(String(vb.s), undefined, { numeric: true, sensitivity: "base" })
+      const d = String(va.s).localeCompare(String(vb.s), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      })
       return dir === "asc" ? d : -d
     })
 
@@ -419,7 +515,7 @@ export default function DivisionPage() {
 
                 {leagues.leagueKeys.map(k => (
                   <option key={k} value={k}>
-                    {k}
+                    {leagueNameMap[k] || k}
                   </option>
                 ))}
               </select>
@@ -445,7 +541,6 @@ export default function DivisionPage() {
 
         {!loading && !error && (
           <>
-            {/* ✅ Standings (General / Weekly) */}
             <div style={{ marginBottom: 18 }}>
               <div
                 className="sectionTitle"
@@ -455,7 +550,7 @@ export default function DivisionPage() {
                   alignItems: "center",
                   justifyContent: "space-between",
                   gap: 12,
-                  flexWrap: "wrap"
+                  flexWrap: "wrap",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
@@ -545,10 +640,10 @@ export default function DivisionPage() {
               )}
             </div>
 
-            {/* ✅ Leagues grid (existing) */}
             <div className="leagueGrid">
               {leagues.leagueKeys.map(league => {
                 const list = leagues.out[league] || []
+                const leagueLabel = leagueNameMap[league] || league
 
                 return (
                   <div key={league}>
@@ -557,9 +652,9 @@ export default function DivisionPage() {
                         to={`/league/${encodeURIComponent(league)}`}
                         className="badge"
                         style={{ textDecoration: "none" }}
-                        title={`Open league ${league}`}
+                        title={`Open league ${leagueLabel}`}
                       >
-                        {league}
+                        {leagueLabel}
                       </Link>
 
                       <span style={{ color: "var(--gnfc-muted)", fontSize: 13 }}>{list.length} teams</span>
@@ -617,7 +712,7 @@ const thStyle = {
   wordBreak: "normal",
   overflowWrap: "break-word",
   lineHeight: 1.15,
-  verticalAlign: "middle"
+  verticalAlign: "middle",
 }
 
 const tdStyle = {
@@ -625,7 +720,7 @@ const tdStyle = {
   padding: "12px 10px",
   borderBottom: "1px solid rgba(255,255,255,0.08)",
   fontSize: 14,
-  whiteSpace: "nowrap"
+  whiteSpace: "nowrap",
 }
 
 /* ✅ League tables keep original look (no wrap) */
@@ -636,7 +731,7 @@ const thStyleLeague = {
   color: "var(--gnfc-muted)",
   letterSpacing: 0.3,
   borderBottom: "1px solid rgba(255,255,255,0.10)",
-  whiteSpace: "nowrap"
+  whiteSpace: "nowrap",
 }
 
 const leagueSelect = {
@@ -649,15 +744,15 @@ const leagueSelect = {
   background: "rgba(255,255,255,0.06)",
   border: "1px solid rgba(255,255,255,0.12)",
   outline: "none",
-  cursor: "pointer"
+  cursor: "pointer",
 }
 
 const tdStyleLeague = {
   padding: "12px 12px",
   borderBottom: "1px solid rgba(255,255,255,0.08)",
-  fontSize: 14
+  fontSize: 14,
 }
 
 const rowStyle = idx => ({
-  background: idx % 2 === 0 ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.10)"
+  background: idx % 2 === 0 ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.10)",
 })

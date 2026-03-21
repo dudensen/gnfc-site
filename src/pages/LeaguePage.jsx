@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { Link, useParams, useNavigate } from "react-router-dom"
 import { LEAGUE_GIDS } from "../config/leagueGids"
+import { FANTRAX_LEAGUE_IDS } from "../config/fantraxLeagueIds"
 
 /* ----------------------------- config ----------------------------- */
 
@@ -30,6 +31,58 @@ function hasLetters(x) {
 
 function teamHref(teamName) {
   return `/team/${encodeURIComponent(s(teamName))}`
+}
+
+function fixFantraxText(value) {
+  const text = String(value ?? "")
+  try {
+    return decodeURIComponent(escape(text))
+  } catch {
+    return text
+  }
+}
+
+function cleanLeagueDisplayName(value) {
+  return fixFantraxText(value)
+    .replace(/^GNFC\s*/i, "")
+    .replace(/\s*-\s*/g, " - ")
+    .trim()
+}
+
+function normalizeRouteLeagueKey(value) {
+  const raw = s(value).toUpperCase().replace(/^GNFC\s+/, "")
+  const match = raw.match(/([AΑBΒΓG])\s*([0-9]+)/)
+  if (!match) return raw
+
+  let letter = match[1]
+  const number = match[2]
+
+  if (letter === "Α") letter = "A"
+  if (letter === "Β") letter = "B"
+  if (letter === "G") letter = "Γ"
+
+  return `${letter}${number}`
+}
+
+function extractLeagueKeyFromLeagueName(name, availableKeys = []) {
+  const text = cleanLeagueDisplayName(name)
+  const match = text.match(/([AΑBΒΓG])\s*([0-9]+)/i)
+  if (!match) return null
+
+  const rawKey = normalizeRouteLeagueKey(`${match[1]}${match[2]}`)
+  if (availableKeys.includes(rawKey)) return rawKey
+
+  const variants = [
+    rawKey,
+    rawKey.replace(/^A/, "Α"),
+    rawKey.replace(/^Α/, "A"),
+    rawKey.replace(/^B/, "Β"),
+    rawKey.replace(/^Β/, "B"),
+    rawKey.replace(/^Γ/, "G"),
+    rawKey.replace(/^G/, "Γ"),
+  ]
+
+  return variants.find(v => availableKeys.includes(v)) || rawKey
 }
 
 /* ----------------------------- GViz parsing ----------------------------- */
@@ -465,18 +518,18 @@ function StatChip({ value, tone }) {
   }
 
   const base = {
-  display: "inline-block",
-  minWidth: 70,
-  textAlign: "center",
-  padding: "4px 10px",
-  borderRadius: 10,
-  fontWeight: 800,
-  fontSize: 13,
-  letterSpacing: 0.2,
-  lineHeight: 1.2,
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(0,0,0,0.14)",
-}
+    display: "inline-block",
+    minWidth: 70,
+    textAlign: "center",
+    padding: "4px 10px",
+    borderRadius: 10,
+    fontWeight: 800,
+    fontSize: 13,
+    letterSpacing: 0.2,
+    lineHeight: 1.2,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.14)",
+  }
 
   const toneStyle =
     tone === "a"
@@ -602,10 +655,13 @@ export default function LeaguePage() {
   const leagueKey = decodeURIComponent(league || DEFAULT_LEAGUE_KEY)
   const navigate = useNavigate()
 
+  const [leagueNameMap, setLeagueNameMap] = useState({})
+
   const leagueOptions = useMemo(() => {
     const keys = Object.keys(LEAGUE_GIDS || {})
-    const rest = keys.filter(k => k !== leagueKey).sort((a, b) => a.localeCompare(b))
-    return [leagueKey, ...rest]
+    const current = keys.includes(leagueKey) ? leagueKey : DEFAULT_LEAGUE_KEY
+    const rest = keys.filter(k => k !== current).sort((a, b) => a.localeCompare(b))
+    return [current, ...rest]
   }, [leagueKey])
 
   const gid = LEAGUE_GIDS?.[leagueKey] ?? LEAGUE_GIDS?.[DEFAULT_LEAGUE_KEY] ?? 0
@@ -625,6 +681,53 @@ export default function LeaguePage() {
   const [playoffsCols, setPlayoffsCols] = useState([])
 
   const [view, setView] = useState("matchups") // "matchups" | "playouts" | "playoffs"
+
+  useEffect(() => {
+    let alive = true
+
+    ;(async () => {
+      try {
+        const availableKeys = Object.keys(LEAGUE_GIDS || {})
+        const results = await Promise.all(
+          (FANTRAX_LEAGUE_IDS || []).map(async (leagueId) => {
+            try {
+              const res = await fetch(
+                `https://www.fantrax.com/fxea/general/getLeagueInfo?leagueId=${leagueId}`
+              )
+              if (!res.ok) throw new Error(`Failed Fantrax request for ${leagueId}`)
+
+              const data = await res.json()
+              const leagueName = cleanLeagueDisplayName(data?.leagueName || "")
+              const key = extractLeagueKeyFromLeagueName(leagueName, availableKeys)
+
+              if (!key || !leagueName) return null
+              return [key, leagueName]
+            } catch {
+              return null
+            }
+          })
+        )
+
+        if (!alive) return
+
+        const nextMap = {}
+        for (const item of results) {
+          if (!item) continue
+          const [key, name] = item
+          nextMap[key] = name
+        }
+
+        setLeagueNameMap(nextMap)
+      } catch {
+        if (!alive) return
+        setLeagueNameMap({})
+      }
+    })()
+
+    return () => {
+      alive = false
+    }
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -769,6 +872,7 @@ export default function LeaguePage() {
     view === "playouts" ? playoutsError : view === "playoffs" ? playoffsError : error
 
   const playoffsCount = playoffsSections.sections.reduce((sum, sec) => sum + sec.pairs.length, 0)
+  const currentLeagueLabel = leagueNameMap[leagueKey] || leagueKey
 
   return (
     <>
@@ -777,7 +881,7 @@ export default function LeaguePage() {
           <img src="/gnfc-logo.png" alt="GNFC Logo" />
           <div className="brand-title">
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <h1 style={{ margin: 0 }}>{leagueKey}</h1>
+              <h1 style={{ margin: 0 }}>{currentLeagueLabel}</h1>
 
               <select
                 value={leagueKey}
@@ -787,7 +891,7 @@ export default function LeaguePage() {
               >
                 {leagueOptions.map(k => (
                   <option key={k} value={k}>
-                    {k}
+                    {leagueNameMap[k] || k}
                   </option>
                 ))}
               </select>
@@ -812,12 +916,12 @@ export default function LeaguePage() {
           <>
             {(standingsBefore || finalPair) && (
               <div
-              className="topSummaryGrid"
-              style={{
-                marginBottom: 14,
-                gridTemplateColumns: finalPair ? undefined : "1fr",
-              }}
-            >
+                className="topSummaryGrid"
+                style={{
+                  marginBottom: 14,
+                  gridTemplateColumns: finalPair ? undefined : "1fr",
+                }}
+              >
                 {finalPair && (
                   <div>
                     <div className="sectionTitle" style={{ marginTop: 0 }}>

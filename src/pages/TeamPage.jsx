@@ -19,21 +19,26 @@ const TROPHY_IMAGES = {
   leagueA: "/awards/league-winner-a.webp",
   leagueB: "/awards/league-winner-b.webp",
   leagueG: "/awards/league-winner-g.webp",
-  divisionWinner: "/awards/division-winner.webp",
+
+  divisionA: "/awards/division-winner-a.webp",
+  divisionB: "/awards/division-winner-b.webp",
+  divisionG: "/awards/division-winner-g.webp",
+
   cl: "/awards/champions-league.webp",
   cup: "/awards/cup.webp",
 }
 
 const TROPHY_GRAVITY = {
-  divisionWinner: 1,
+  divisionA: 1,
+
 
   championA: 3,
   championsLeague: 4,
   cup: 5,
   leagueWinnerA: 6,
-  championB: 7,
+  divisionB: 7,
   leagueWinnerB: 8,
-  championG: 9,
+  divisionG: 9,
   leagueWinnerG: 20,
 }
 
@@ -841,7 +846,11 @@ export default function TeamPage() {
   let leagueWinnerA = 0
   let leagueWinnerB = 0
   let leagueWinnerG = 0
-  let divisionWinner = 0
+
+  let divisionWinnerA = 0
+  let divisionWinnerB = 0
+  let divisionWinnerG = 0
+
   let championsLeague = 0
   let cup = 0
 
@@ -869,7 +878,9 @@ export default function TeamPage() {
     }
 
     if (isDivisionWinner) {
-      divisionWinner += 1
+      if (leagueNorm.startsWith("a")) divisionWinnerA += 1
+      else if (leagueNorm.startsWith("b")) divisionWinnerB += 1
+      else if (leagueNorm.startsWith("γ") || leagueNorm.startsWith("g")) divisionWinnerG += 1
     }
 
     if (clNorm.includes("winner") || clNorm.includes("champion")) {
@@ -883,10 +894,22 @@ export default function TeamPage() {
 
   return [
     {
-      key: "divisionWinner",
-      label: "Division Champion",
-      count: divisionWinner,
-      iconType: "divisionWinner",
+      key: "divisionA",
+      label: "Division A Champion",
+      count: divisionWinnerA,
+      iconType: "divisionA",
+    },
+    {
+      key: "divisionB",
+      label: "Division B Champion",
+      count: divisionWinnerB,
+      iconType: "divisionB",
+    },
+    {
+      key: "divisionG",
+      label: "Division Γ Champion",
+      count: divisionWinnerG,
+      iconType: "divisionG",
     },
     {
       key: "championsLeague",

@@ -126,6 +126,8 @@ function scoreWLT(aRow, bRow, statKeys) {
   return { w, l, t }
 }
 
+
+
 /* ----------------------------- CSV parsing ----------------------------- */
 
 function parseCsv(text) {
@@ -228,6 +230,49 @@ function cleanTitle(title) {
 function isProbablyNumeric(v) {
   const t = s(v).replace(/[%,$]/g, "")
   return !!t && !Number.isNaN(Number(t))
+}
+
+function podiumTrophySrc(title) {
+  const t = norm(title)
+    .replace(/[()\-–—:/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+  if (
+    /^a category champion$/.test(t) ||
+    /^category champion a$/.test(t) ||
+    /^a champion$/.test(t) ||
+    /^division a$/.test(t) ||
+    /\ba\b/.test(t) && t.includes("category champion")
+  ) {
+    return "/awards/division-winner-a.webp"
+  }
+
+  if (
+    /^b category champion$/.test(t) ||
+    /^category champion b$/.test(t) ||
+    /^b champion$/.test(t) ||
+    /^division b$/.test(t) ||
+    /\bb\b/.test(t) && t.includes("category champion")
+  ) {
+    return "/awards/division-winner-b.webp"
+  }
+
+  if (
+    /^γ category champion$/.test(t) ||
+    /^g category champion$/.test(t) ||
+    /^category champion γ$/.test(t) ||
+    /^category champion g$/.test(t) ||
+    /^γ champion$/.test(t) ||
+    /^g champion$/.test(t) ||
+    /^division γ$/.test(t) ||
+    /^division g$/.test(t) ||
+    ((/\bγ\b/.test(t) || /\bg\b/.test(t)) && t.includes("category champion"))
+  ) {
+    return "/awards/division-winner-g.webp"
+  }
+
+  return "/awards/division-winner.webp"
 }
 
 function extractBlocksFromCsvRows(csvRows) {
@@ -620,19 +665,20 @@ function PodiumCard({ title, items }) {
   const first = items.find(x => x.place === 1)
   const second = items.find(x => x.place === 2)
   const third = items.find(x => x.place === 3)
+  
 
   const trophy = (
-    <img
-      src="/awards/division-winner.webp"
-      alt="Category Champion"
-      style={{
-        width: 20,
-        height: 20,
-        objectFit: "contain",
-        flex: "0 0 auto",
-      }}
-    />
-  )
+  <img
+    src={podiumTrophySrc(title)}
+    alt="Category Champion"
+    style={{
+      width: 20,
+      height: 20,
+      objectFit: "contain",
+      flex: "0 0 auto",
+    }}
+  />
+)
 
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>

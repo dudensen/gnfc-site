@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { Link, useParams, useNavigate } from "react-router-dom"
 import { LEAGUE_GIDS } from "../config/leagueGids"
-import { FANTRAX_LEAGUE_IDS } from "../config/fantraxLeagueIds"
+import { getFantraxLeagueNames, normalizeLeagueKey } from "../utils/fantraxLeagues"
 
 /* ----------------------------- config ----------------------------- */
 
@@ -31,58 +31,6 @@ function hasLetters(x) {
 
 function teamHref(teamName) {
   return `/team/${encodeURIComponent(s(teamName))}`
-}
-
-function fixFantraxText(value) {
-  const text = String(value ?? "")
-  try {
-    return decodeURIComponent(escape(text))
-  } catch {
-    return text
-  }
-}
-
-function cleanLeagueDisplayName(value) {
-  return fixFantraxText(value)
-    .replace(/^GNFC\s*/i, "")
-    .replace(/\s*-\s*/g, " - ")
-    .trim()
-}
-
-function normalizeRouteLeagueKey(value) {
-  const raw = s(value).toUpperCase().replace(/^GNFC\s+/, "")
-  const match = raw.match(/([AΑBΒΓG])\s*([0-9]+)/)
-  if (!match) return raw
-
-  let letter = match[1]
-  const number = match[2]
-
-  if (letter === "Α") letter = "A"
-  if (letter === "Β") letter = "B"
-  if (letter === "G") letter = "Γ"
-
-  return `${letter}${number}`
-}
-
-function extractLeagueKeyFromLeagueName(name, availableKeys = []) {
-  const text = cleanLeagueDisplayName(name)
-  const match = text.match(/([AΑBΒΓG])\s*([0-9]+)/i)
-  if (!match) return null
-
-  const rawKey = normalizeRouteLeagueKey(`${match[1]}${match[2]}`)
-  if (availableKeys.includes(rawKey)) return rawKey
-
-  const variants = [
-    rawKey,
-    rawKey.replace(/^A/, "Α"),
-    rawKey.replace(/^Α/, "A"),
-    rawKey.replace(/^B/, "Β"),
-    rawKey.replace(/^Β/, "B"),
-    rawKey.replace(/^Γ/, "G"),
-    rawKey.replace(/^G/, "Γ"),
-  ]
-
-  return variants.find(v => availableKeys.includes(v)) || rawKey
 }
 
 /* ----------------------------- GViz parsing ----------------------------- */
@@ -684,49 +632,10 @@ export default function LeaguePage() {
 
   useEffect(() => {
     let alive = true
-
-    ;(async () => {
-      try {
-        const availableKeys = Object.keys(LEAGUE_GIDS || {})
-        const results = await Promise.all(
-          (FANTRAX_LEAGUE_IDS || []).map(async (leagueId) => {
-            try {
-              const res = await fetch(
-                `https://www.fantrax.com/fxea/general/getLeagueInfo?leagueId=${leagueId}`
-              )
-              if (!res.ok) throw new Error(`Failed Fantrax request for ${leagueId}`)
-
-              const data = await res.json()
-              const leagueName = cleanLeagueDisplayName(data?.leagueName || "")
-              const key = extractLeagueKeyFromLeagueName(leagueName, availableKeys)
-
-              if (!key || !leagueName) return null
-              return [key, leagueName]
-            } catch {
-              return null
-            }
-          })
-        )
-
-        if (!alive) return
-
-        const nextMap = {}
-        for (const item of results) {
-          if (!item) continue
-          const [key, name] = item
-          nextMap[key] = name
-        }
-
-        setLeagueNameMap(nextMap)
-      } catch {
-        if (!alive) return
-        setLeagueNameMap({})
-      }
-    })()
-
-    return () => {
-      alive = false
-    }
+    getFantraxLeagueNames()
+      .then(names => { if (alive) setLeagueNameMap(names) })
+      .catch(() => { if (alive) setLeagueNameMap({}) })
+    return () => { alive = false }
   }, [])
 
   useEffect(() => {
@@ -872,7 +781,7 @@ export default function LeaguePage() {
     view === "playouts" ? playoutsError : view === "playoffs" ? playoffsError : error
 
   const playoffsCount = playoffsSections.sections.reduce((sum, sec) => sum + sec.pairs.length, 0)
-  const currentLeagueLabel = leagueNameMap[leagueKey] || leagueKey
+  const currentLeagueLabel = leagueNameMap[normalizeLeagueKey(leagueKey)] || leagueKey
 
   return (
     <>
@@ -891,7 +800,7 @@ export default function LeaguePage() {
               >
                 {leagueOptions.map(k => (
                   <option key={k} value={k}>
-                    {leagueNameMap[k] || k}
+                    {leagueNameMap[normalizeLeagueKey(k)] || k}
                   </option>
                 ))}
               </select>

@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useTeams } from "../hooks/useTeams"
-import { FANTRAX_LEAGUE_IDS } from "../config/fantraxLeagueIds"
+import { getFantraxLeagueNames, normalizeLeagueKey } from "../utils/fantraxLeagues"
 
 /* ----------------------------- config ----------------------------- */
 
@@ -59,58 +59,6 @@ function stripPct(x) {
   if (!Number.isFinite(n)) return null
   if (t.includes("%") && n > 1) n = n / 100
   return n
-}
-
-function fixFantraxText(value) {
-  const text = String(value ?? "")
-  try {
-    return decodeURIComponent(escape(text))
-  } catch {
-    return text
-  }
-}
-
-function cleanLeagueDisplayName(value) {
-  return fixFantraxText(value)
-    .replace(/^GNFC\s*/i, "")
-    .replace(/\s*-\s*/g, " - ")
-    .trim()
-}
-
-function normalizeRouteLeagueKey(value) {
-  const raw = s(value).toUpperCase().replace(/^GNFC\s+/, "")
-  const match = raw.match(/([AΑBΒΓG])\s*([0-9]+)/)
-  if (!match) return raw
-
-  let letter = match[1]
-  const number = match[2]
-
-  if (letter === "Α") letter = "A"
-  if (letter === "Β") letter = "B"
-  if (letter === "G") letter = "Γ"
-
-  return `${letter}${number}`
-}
-
-function extractLeagueKeyFromLeagueName(name, availableKeys = []) {
-  const text = cleanLeagueDisplayName(name)
-  const match = text.match(/([AΑBΒΓG])\s*([0-9]+)/i)
-  if (!match) return null
-
-  const rawKey = normalizeRouteLeagueKey(`${match[1]}${match[2]}`)
-  if (availableKeys.includes(rawKey)) return rawKey
-
-  const variants = [
-    rawKey,
-    rawKey.replace(/^A/, "Α"),
-    rawKey.replace(/^Α/, "A"),
-    rawKey.replace(/^B/, "Β"),
-    rawKey.replace(/^Β/, "B"),
-    rawKey.replace(/^Γ/, "G"),
-    rawKey.replace(/^G/, "Γ"),
-  ]
-
-  return variants.find(v => availableKeys.includes(v)) || rawKey
 }
 
 /* ----------------------------- General/Weekly: header rename + hidden columns ---- */
@@ -349,56 +297,11 @@ export default function DivisionPage() {
 
   useEffect(() => {
     let alive = true
-
-    ;(async () => {
-      try {
-        const availableKeys = Array.from(
-          new Set([
-            ...Object.keys(leagues.out || {}),
-            ...teams.map(t => s(t.league)).filter(Boolean),
-          ])
-        )
-
-        const results = await Promise.all(
-          (FANTRAX_LEAGUE_IDS || []).map(async (leagueId) => {
-            try {
-              const res = await fetch(
-                `https://www.fantrax.com/fxea/general/getLeagueInfo?leagueId=${leagueId}`
-              )
-              if (!res.ok) throw new Error(`Failed Fantrax request for ${leagueId}`)
-
-              const data = await res.json()
-              const leagueName = cleanLeagueDisplayName(data?.leagueName || "")
-              const key = extractLeagueKeyFromLeagueName(leagueName, availableKeys)
-
-              if (!key || !leagueName) return null
-              return [key, leagueName]
-            } catch {
-              return null
-            }
-          })
-        )
-
-        if (!alive) return
-
-        const nextMap = {}
-        for (const item of results) {
-          if (!item) continue
-          const [key, name] = item
-          nextMap[key] = name
-        }
-
-        setLeagueNameMap(nextMap)
-      } catch {
-        if (!alive) return
-        setLeagueNameMap({})
-      }
-    })()
-
-    return () => {
-      alive = false
-    }
-  }, [leagues.out, teams])
+    getFantraxLeagueNames()
+      .then(names => { if (alive) setLeagueNameMap(names) })
+      .catch(() => { if (alive) setLeagueNameMap({}) })
+    return () => { alive = false }
+  }, [])
 
   useEffect(() => {
     const gid = standingsMode === "weekly" ? WK_GID_BY_DIV[division] : GEN_GID_BY_DIV[division]
@@ -515,7 +418,7 @@ export default function DivisionPage() {
 
                 {leagues.leagueKeys.map(k => (
                   <option key={k} value={k}>
-                    {leagueNameMap[k] || k}
+                    {leagueNameMap[normalizeLeagueKey(k)] || k}
                   </option>
                 ))}
               </select>
@@ -643,7 +546,7 @@ export default function DivisionPage() {
             <div className="leagueGrid">
               {leagues.leagueKeys.map(league => {
                 const list = leagues.out[league] || []
-                const leagueLabel = leagueNameMap[league] || league
+                const leagueLabel = leagueNameMap[normalizeLeagueKey(league)] || league
 
                 return (
                   <div key={league}>

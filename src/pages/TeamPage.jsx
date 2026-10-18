@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useTeams } from "../hooks/useTeams"
+import { getDraftLeagueId } from "../config/fantraxDraftLeagues"
 import { RANKING_SHEET_ID, RANKING_GIDS } from "../config/rankingGids"
 
 /* ----------------------------- sheet sources ----------------------------- */
@@ -19,26 +20,21 @@ const TROPHY_IMAGES = {
   leagueA: "/awards/league-winner-a.webp",
   leagueB: "/awards/league-winner-b.webp",
   leagueG: "/awards/league-winner-g.webp",
-
-  divisionA: "/awards/division-winner-a.webp",
-  divisionB: "/awards/division-winner-b.webp",
-  divisionG: "/awards/division-winner-g.webp",
-
+  divisionWinner: "/awards/division-winner.webp",
   cl: "/awards/champions-league.webp",
   cup: "/awards/cup.webp",
 }
 
 const TROPHY_GRAVITY = {
-  divisionA: 1,
-
+  divisionWinner: 1,
 
   championA: 3,
   championsLeague: 4,
   cup: 5,
   leagueWinnerA: 6,
-  divisionB: 7,
+  championB: 7,
   leagueWinnerB: 8,
-  divisionG: 9,
+  championG: 9,
   leagueWinnerG: 20,
 }
 
@@ -664,6 +660,131 @@ function AwardTrophy({ type, label, href }) {
   )
 }
 
+/* ----------------------------- current roster ----------------------------- */
+
+const show = value => value == null || value === "" ? "—" : value
+function savedTeam(key) {
+  try { return window.localStorage.getItem(key) || "" } catch { return "" }
+}
+function saveTeam(key, value) {
+  try {
+    if (value) window.localStorage.setItem(key, value)
+    else window.localStorage.removeItem(key)
+  } catch { /* Roster access still works when browser storage is unavailable. */ }
+}
+
+function FantraxTeamRoster({ leagueKey, teamName }) {
+  const leagueId = getDraftLeagueId(leagueKey)
+  const storageKey = `gnfc-roster-team:${leagueId}:${teamName}`
+  const [preferredId, setPreferredId] = useState(() => savedTeam(storageKey))
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [choices, setChoices] = useState([])
+  const [reload, setReload] = useState(0)
+
+  useEffect(() => {
+    if (!leagueId || !teamName) { setLoading(false); return }
+    let alive = true
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 40000)
+    setLoading(true)
+    setError("")
+    setChoices([])
+    setData(null)
+    const params = new URLSearchParams({ league: leagueKey, team: teamName })
+    if (preferredId) params.set("teamId", preferredId)
+    ;(async () => {
+      try {
+        const response = await fetch(`/api/gnfc-roster?${params}`, { signal: controller.signal, cache: "no-store" })
+        if (!response.headers.get("content-type")?.includes("application/json")) {
+          throw new Error("The roster service is unavailable. Please try again later.")
+        }
+        const result = await response.json()
+        if (!response.ok) {
+          if (alive && result?.code === "TEAM_SELECTION_REQUIRED" && result.leagueId === leagueId && Array.isArray(result.teams)) {
+            setChoices(result.teams)
+          }
+          throw new Error(result?.error || `Roster request failed (${response.status}).`)
+        }
+        if (result?.leagueId !== leagueId || !Array.isArray(result?.players) || !result.teamId ||
+            (preferredId && result.teamId !== preferredId)) {
+          throw new Error("The roster service returned unexpected team data.")
+        }
+        if (alive) setData(result)
+      } catch (e) {
+        if (alive) setError(e?.name === "AbortError" ? "The roster request timed out. Please try again." : e?.message || "Unable to load this roster.")
+      } finally {
+        clearTimeout(timeout)
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => { alive = false; clearTimeout(timeout); controller.abort() }
+  }, [leagueKey, leagueId, teamName, preferredId, reload])
+
+  const players = data?.leagueId === leagueId ? data.players : []
+
+  function chooseTeam(teamId) {
+    saveTeam(storageKey, teamId)
+    setPreferredId(teamId)
+  }
+
+  return (
+    <section className="card gnfcRoster" aria-label={`${teamName} current roster`}>
+      <h2 style={{ margin: "0 0 14px", fontSize: 18, fontWeight: 900 }}>Current Roster</h2>
+
+      {!leagueId ? <div className="notice">A current Fantrax roster is not configured for {leagueKey}.</div> : <>
+        {loading && <div className="notice" role="status">Loading current roster…</div>}
+        {!loading && error && <div className="notice" role="alert">
+          <div>{error}</div>
+          <div className="gnfcRosterErrorActions">
+            <button className="gnfcRosterControl" type="button" onClick={() => setReload(value => value + 1)}>Try again</button>
+            {preferredId && <button className="gnfcRosterControl" type="button" onClick={() => chooseTeam("")}>Reset team match</button>}
+          </div>
+        </div>}
+        {!loading && choices.length > 0 && <label className="gnfcRosterMatch">
+          Fantrax team in {leagueKey}
+          <select className="gnfcRosterControl" value="" onChange={event => chooseTeam(event.target.value)}>
+            <option value="" disabled>Select the matching team…</option>
+            {choices.map(team => <option key={team.teamId} value={team.teamId}>{team.teamName}</option>)}
+          </select>
+          <span style={{ color: "var(--gnfc-muted)", fontSize: 12 }}>Your selection is remembered in this browser.</span>
+        </label>}
+
+        {!loading && !error && data && <>
+          {players.length === 0 ? <div className="notice">This team has no rostered players for the current lineup period.</div> : <>
+            <ul className="gnfcRosterList" role="list" aria-label={`${data.teamName} — current Fantrax roster`}>
+              {players.map(player => <li className="gnfcRosterRow" key={player.key}>
+                <div className="gnfcRosterName"><span className="gnfcRosterPlayer">{player.playerName}</span><span className="gnfcRosterDetail">{show(player.nbaTeam)}</span></div>
+                <div className="gnfcRosterPosition"><span title="Position">{show(player.position)}</span><span className="gnfcRosterDetail">Slot: {show(player.slot)}</span></div>
+                <span className={`gnfcRosterStatus ${player.status === "ACTIVE" ? "isActive" : player.status === "INJURED_RESERVE" ? "isIR" : ""}`}>{player.statusLabel}</span>
+              </li>)}
+            </ul>
+          </>}
+        </>}
+      </>}
+
+      <style>{`
+        .gnfcRoster { padding:16px; min-width:0; }
+        .gnfcRosterErrorActions { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:8px; }
+        .gnfcRosterControl { box-sizing:border-box; max-width:100%; min-width:0; min-height:32px; padding:6px 8px; border-radius:8px; border:1px solid var(--gnfc-border); background:var(--gnfc-surface); color:var(--gnfc-ink); font:inherit; font-size:12px; }
+        .gnfcRosterControl:focus-visible { outline:2px solid #db7d12; outline-offset:2px; }
+        button.gnfcRosterControl { cursor:pointer; font-weight:800; }
+        .gnfcRosterMatch { display:flex; flex-direction:column; gap:4px; min-width:0; margin-top:10px; font-size:11px; font-weight:800; }
+        .gnfcRosterList { display:grid; gap:10px; margin:0; padding:0; list-style:none; }
+        .gnfcRosterRow { display:grid; grid-template-columns:minmax(0,1fr) 48px 64px; align-items:center; gap:10px; border:1px solid rgba(5,97,97,.35); border-radius:14px; padding:12px; background:rgba(255,255,255,.96); box-shadow:0 4px 12px rgba(5,97,97,.05); }
+        .gnfcRosterName { min-width:0; overflow-wrap:anywhere; }
+        .gnfcRosterPosition { min-width:0; font-size:12px; color:var(--gnfc-ink); overflow-wrap:anywhere; }
+        .gnfcRosterPlayer { display:block; font-size:13px; font-weight:900; line-height:1.3; color:var(--gnfc-muted); }
+        .gnfcRosterDetail { display:block; margin-top:2px; color:var(--gnfc-muted); font-size:10px; line-height:1.25; }
+        .gnfcRosterStatus { display:inline-block; justify-self:end; padding:3px 5px; border:1px solid rgba(5,97,97,.25); border-radius:999px; background:rgba(128,128,128,.12); color:var(--gnfc-ink); font-size:10px; font-weight:800; white-space:nowrap; }
+        .gnfcRosterStatus.isActive { border-color:rgba(0,160,120,.65); background:rgba(0,160,120,.18); color:#168044; }
+        .gnfcRosterStatus.isIR { border-color:rgba(220,38,38,.7); background:rgba(220,38,38,.18); color:#dc4545; }
+      `}</style>
+    </section>
+  )
+}
+
 /* ----------------------------- main component ----------------------------- */
 
 export default function TeamPage() {
@@ -846,11 +967,7 @@ export default function TeamPage() {
   let leagueWinnerA = 0
   let leagueWinnerB = 0
   let leagueWinnerG = 0
-
-  let divisionWinnerA = 0
-  let divisionWinnerB = 0
-  let divisionWinnerG = 0
-
+  let divisionWinner = 0
   let championsLeague = 0
   let cup = 0
 
@@ -878,9 +995,7 @@ export default function TeamPage() {
     }
 
     if (isDivisionWinner) {
-      if (leagueNorm.startsWith("a")) divisionWinnerA += 1
-      else if (leagueNorm.startsWith("b")) divisionWinnerB += 1
-      else if (leagueNorm.startsWith("γ") || leagueNorm.startsWith("g")) divisionWinnerG += 1
+      divisionWinner += 1
     }
 
     if (clNorm.includes("winner") || clNorm.includes("champion")) {
@@ -894,22 +1009,10 @@ export default function TeamPage() {
 
   return [
     {
-      key: "divisionA",
-      label: "Division A Champion",
-      count: divisionWinnerA,
-      iconType: "divisionA",
-    },
-    {
-      key: "divisionB",
-      label: "Division B Champion",
-      count: divisionWinnerB,
-      iconType: "divisionB",
-    },
-    {
-      key: "divisionG",
-      label: "Division Γ Champion",
-      count: divisionWinnerG,
-      iconType: "divisionG",
+      key: "divisionWinner",
+      label: "Division Champion",
+      count: divisionWinner,
+      iconType: "divisionWinner",
     },
     {
       key: "championsLeague",
@@ -1522,17 +1625,15 @@ function bestLeaguePlacementDisplay(entry, entries) {
               </div>
             ) : null}
 
-            <div
-              style={{
-                marginTop: 14,
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                gap: 14,
-                alignItems: "stretch",
-              }}
-            >
+            <div className="gnfcTeamStatsGrid">
+              <FantraxTeamRoster
+                key={`${team.league}:${team.team}`}
+                leagueKey={team.league}
+                teamName={team.team}
+              />
+
               <div className="card" style={{ padding: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
                   <div style={{ fontSize: 18, fontWeight: 900 }}>Category Positions</div>
                   <div style={{ fontSize: 12, color: "var(--gnfc-muted)" }}>Top 5 / Bottom 5</div>
                 </div>
@@ -1685,10 +1786,17 @@ function bestLeaguePlacementDisplay(entry, entries) {
                   ) : null}
                 </div>
               </div>
+
             </div>
           </>
         )}
       </div>
+      <style>{`
+        .gnfcTeamStatsGrid { margin-top:14px; display:grid; grid-template-columns:minmax(280px,1.2fr) repeat(3,minmax(0,1fr)); gap:14px; align-items:start; }
+        .gnfcTeamStatsGrid > * { min-width:0; }
+        @media (max-width:1100px) { .gnfcTeamStatsGrid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+        @media (max-width:680px) { .gnfcTeamStatsGrid { grid-template-columns:minmax(0,1fr); } }
+      `}</style>
     </>
   )
 }

@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { Link, useParams, useNavigate } from "react-router-dom"
 import { LEAGUE_GIDS } from "../config/leagueGids"
-import { getFantraxLeagueNames, normalizeLeagueKey } from "../utils/fantraxLeagues"
+import LeagueDraftResults from "../components/LeagueDraftResults"
 
 /* ----------------------------- config ----------------------------- */
 
@@ -466,18 +466,18 @@ function StatChip({ value, tone }) {
   }
 
   const base = {
-    display: "inline-block",
-    minWidth: 70,
-    textAlign: "center",
-    padding: "4px 10px",
-    borderRadius: 10,
-    fontWeight: 800,
-    fontSize: 13,
-    letterSpacing: 0.2,
-    lineHeight: 1.2,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.14)",
-  }
+  display: "inline-block",
+  minWidth: 70,
+  textAlign: "center",
+  padding: "4px 10px",
+  borderRadius: 10,
+  fontWeight: 800,
+  fontSize: 13,
+  letterSpacing: 0.2,
+  lineHeight: 1.2,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(0,0,0,0.14)",
+}
 
   const toneStyle =
     tone === "a"
@@ -603,13 +603,10 @@ export default function LeaguePage() {
   const leagueKey = decodeURIComponent(league || DEFAULT_LEAGUE_KEY)
   const navigate = useNavigate()
 
-  const [leagueNameMap, setLeagueNameMap] = useState({})
-
   const leagueOptions = useMemo(() => {
     const keys = Object.keys(LEAGUE_GIDS || {})
-    const current = keys.includes(leagueKey) ? leagueKey : DEFAULT_LEAGUE_KEY
-    const rest = keys.filter(k => k !== current).sort((a, b) => a.localeCompare(b))
-    return [current, ...rest]
+    const rest = keys.filter(k => k !== leagueKey).sort((a, b) => a.localeCompare(b))
+    return [leagueKey, ...rest]
   }, [leagueKey])
 
   const gid = LEAGUE_GIDS?.[leagueKey] ?? LEAGUE_GIDS?.[DEFAULT_LEAGUE_KEY] ?? 0
@@ -628,15 +625,7 @@ export default function LeaguePage() {
   const [playoffsRows, setPlayoffsRows] = useState([])
   const [playoffsCols, setPlayoffsCols] = useState([])
 
-  const [view, setView] = useState("matchups") // "matchups" | "playouts" | "playoffs"
-
-  useEffect(() => {
-    let alive = true
-    getFantraxLeagueNames()
-      .then(names => { if (alive) setLeagueNameMap(names) })
-      .catch(() => { if (alive) setLeagueNameMap({}) })
-    return () => { alive = false }
-  }, [])
+  const [view, setView] = useState("matchups") // "matchups" | "playouts" | "playoffs" | "draft"
 
   useEffect(() => {
     let alive = true
@@ -781,7 +770,6 @@ export default function LeaguePage() {
     view === "playouts" ? playoutsError : view === "playoffs" ? playoffsError : error
 
   const playoffsCount = playoffsSections.sections.reduce((sum, sec) => sum + sec.pairs.length, 0)
-  const currentLeagueLabel = leagueNameMap[normalizeLeagueKey(leagueKey)] || leagueKey
 
   return (
     <>
@@ -790,7 +778,7 @@ export default function LeaguePage() {
           <img src="/gnfc-logo.png" alt="GNFC Logo" />
           <div className="brand-title">
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <h1 style={{ margin: 0 }}>{currentLeagueLabel}</h1>
+              <h1 style={{ margin: 0 }}>{leagueKey}</h1>
 
               <select
                 value={leagueKey}
@@ -800,7 +788,7 @@ export default function LeaguePage() {
               >
                 {leagueOptions.map(k => (
                   <option key={k} value={k}>
-                    {leagueNameMap[normalizeLeagueKey(k)] || k}
+                    {k}
                   </option>
                 ))}
               </select>
@@ -818,19 +806,67 @@ export default function LeaguePage() {
       </div>
 
       <div className="container">
-        {showingLoading && <div className="notice">Loading…</div>}
-        {showingError && <div className="notice">Error: {showingError}</div>}
+        <div className="sectionTitle" style={{ alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => setView("matchups")}
+              style={view === "matchups" ? tabPillActive : tabPillInactive}
+              aria-pressed={view === "matchups"}
+            >
+              Matchups
+            </button>
 
-        {!showingLoading && !showingError && (
+            <button
+              type="button"
+              onClick={() => setView("playoffs")}
+              style={view === "playoffs" ? tabPillActive : tabPillInactive}
+              aria-pressed={view === "playoffs"}
+            >
+              Playoffs
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setView("playouts")}
+              style={view === "playouts" ? tabPillActive : tabPillInactive}
+              aria-pressed={view === "playouts"}
+            >
+              Playouts
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setView("draft")}
+              style={view === "draft" ? tabPillActive : tabPillInactive}
+              aria-pressed={view === "draft"}
+            >
+              Draft Results
+            </button>
+          </div>
+
+          {view !== "draft" && !showingLoading && !showingError && <span style={{ color: "var(--gnfc-muted)", fontSize: 13 }}>
+            {view === "playoffs"
+              ? `${playoffsCount} matchups`
+              : `${showingPairs.length} matchups • ${showingPairs.length * 2} teams`}
+          </span>}
+        </div>
+
+        {view === "draft" && <LeagueDraftResults key={leagueKey} leagueKey={leagueKey} />}
+
+        {view !== "draft" && showingLoading && <div className="notice">Loading…</div>}
+        {view !== "draft" && showingError && <div className="notice">Error: {showingError}</div>}
+
+        {view !== "draft" && !showingLoading && !showingError && (
           <>
             {(standingsBefore || finalPair) && (
               <div
-                className="topSummaryGrid"
-                style={{
-                  marginBottom: 14,
-                  gridTemplateColumns: finalPair ? undefined : "1fr",
-                }}
-              >
+              className="topSummaryGrid"
+              style={{
+                marginBottom: 14,
+                gridTemplateColumns: finalPair ? undefined : "1fr",
+              }}
+            >
                 {finalPair && (
                   <div>
                     <div className="sectionTitle" style={{ marginTop: 0 }}>
@@ -911,43 +947,6 @@ export default function LeaguePage() {
                 )}
               </div>
             )}
-
-            <div className="sectionTitle" style={{ alignItems: "center", gap: 12 }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  onClick={() => setView("matchups")}
-                  style={view === "matchups" ? tabPillActive : tabPillInactive}
-                  aria-pressed={view === "matchups"}
-                >
-                  Matchups
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setView("playoffs")}
-                  style={view === "playoffs" ? tabPillActive : tabPillInactive}
-                  aria-pressed={view === "playoffs"}
-                >
-                  Playoffs
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setView("playouts")}
-                  style={view === "playouts" ? tabPillActive : tabPillInactive}
-                  aria-pressed={view === "playouts"}
-                >
-                  Playouts
-                </button>
-              </div>
-
-              <span style={{ color: "var(--gnfc-muted)", fontSize: 13 }}>
-                {view === "playoffs"
-                  ? `${playoffsCount} matchups`
-                  : `${showingPairs.length} matchups • ${showingPairs.length * 2} teams`}
-              </span>
-            </div>
 
             {view !== "playoffs" ? (
               <div className="matchupGrid">

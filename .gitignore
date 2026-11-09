@@ -25,3 +25,9 @@ dist-ssr
 
 # Local dark-mode installation backups
 gnfc-dark-mode-backups/
+
+# Local Roto installation backups
+gnfc-roto-backups/
+
+# Local Roto league update backups
+gnfc-roto-league-backups/

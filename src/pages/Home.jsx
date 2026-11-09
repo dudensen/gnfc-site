@@ -1108,12 +1108,19 @@ export default function Home() {
     </div>
 
     <div className="container">
-      {/* Champions Race alone on top */}
-      <div className="championsRaceRow">
+      {/* Championship navigation */}
+      <div className="championsRaceRow gnfc-roto-home-navigation">
         <BigNavCard
           to="/championsrace"
           title="Championship Race"
           subtitle="Standings • Matchups • Race overview"
+          centered
+        />
+        {/* GNFC_ROTO_HOME v1 */}
+        <BigNavCard
+          to="/roto"
+          title="Roto Championship"
+          subtitle="Overall standings • R1–R6 leagues • Statistics"
           centered
         />
       </div>

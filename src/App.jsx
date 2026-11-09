@@ -1,3 +1,4 @@
+// GNFC_ROTO_ROUTE v1
 // src/App.jsx
 import React from "react"
 import { Routes, Route } from "react-router-dom"
@@ -11,6 +12,8 @@ import GnfcCupPage from "./pages/GnfcCupPage.jsx"
 import ChampionsRacePage from "./pages/ChampionsRacePage.jsx"
 import RivalriesPage from "./pages/RivalriesPage"
 import ConstitutionPage from "./pages/ConstitutionPage"
+
+import RotoChampionshipPage from "./pages/RotoChampionshipPage"
 
 export default function App() {
   return (
@@ -26,6 +29,7 @@ export default function App() {
       <Route path="/championsrace" element={<ChampionsRacePage />} />
       <Route path="/rivalries" element={<RivalriesPage />} />
       <Route path="/constitution" element={<ConstitutionPage />} />
+      <Route path="/roto" element={<RotoChampionshipPage />} />
       <Route path="*" element={<Home />} />
     </Routes>
   )

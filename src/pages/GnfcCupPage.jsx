@@ -1,4 +1,6 @@
+// GNFC_DARK_MODE v1
 import React, { useEffect, useMemo, useState } from "react"
+import ThemeToggle from "../theme/ThemeToggle"
 import { Link, useNavigate } from "react-router-dom"
 import { RANKING_SHEET_ID, RANKING_GIDS } from "../config/rankingGids"
 
@@ -276,7 +278,7 @@ const roundPill = {
   letterSpacing: 0.2,
   color: ink,
   border: `1px solid ${border}`,
-  background: "rgba(10, 122, 114, 0.06)",
+  background: "rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.06)",
   whiteSpace: "nowrap",
 }
 
@@ -297,7 +299,7 @@ const thStyle = {
   color: muted,
   borderBottom: `1px solid ${border}`,
   whiteSpace: "nowrap",
-  background: "rgba(10, 122, 114, 0.06)",
+  background: "rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.06)",
 }
 
 const tdStyle = {
@@ -309,7 +311,7 @@ const tdStyle = {
 }
 
 function rowStyle(idx) {
-  return { background: idx % 2 ? "rgba(10, 122, 114, 0.035)" : "transparent" }
+  return { background: idx % 2 ? "rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.035)" : "transparent" }
 }
 
 /* ============================== stat compare & WLT ============================== */
@@ -373,8 +375,8 @@ function StatChip({ value, tone }) {
     color: ink,
   }
 
-  const team1 = { border: "1px solid rgba(219, 125, 18, 0.55)", background: "rgba(219, 125, 18, 0.14)" }
-  const team2 = { border: "1px solid rgba(5, 97, 97, 0.40)", background: "rgba(5, 97, 97, 0.12)" }
+  const team1 = { border: "1px solid rgba(var(--gnfc-orange-rgb, 219, 125, 18), 0.55)", background: "rgba(var(--gnfc-orange-rgb, 219, 125, 18), 0.14)" }
+  const team2 = { border: "1px solid rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.4)", background: "rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.12)" }
   const tie = { border: `1px solid ${tieRedBd}`, background: tieRedBg, color: tieRed }
 
   const st = tone === "a" ? { ...base, ...team1 } : tone === "b" ? { ...base, ...team2 } : { ...base, ...tie }
@@ -394,8 +396,8 @@ function ScorePill({ value, tone }) {
     lineHeight: 1,
   }
 
-  const team1 = { border: "1px solid rgba(219, 125, 18, 0.55)", background: "rgba(219, 125, 18, 0.14)", color: ink }
-  const team2 = { border: "1px solid rgba(5, 97, 97, 0.40)", background: "rgba(5, 97, 97, 0.12)", color: ink }
+  const team1 = { border: "1px solid rgba(var(--gnfc-orange-rgb, 219, 125, 18), 0.55)", background: "rgba(var(--gnfc-orange-rgb, 219, 125, 18), 0.14)", color: ink }
+  const team2 = { border: "1px solid rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.4)", background: "rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.12)", color: ink }
   const tie = { border: `1px solid ${tieRedBd}`, background: tieRedBg, color: tieRed }
 
   const st = tone === "team1" ? { ...base, ...team1 } : tone === "team2" ? { ...base, ...team2 } : { ...base, ...tie }
@@ -442,8 +444,8 @@ function PastYearsCupBox({ years, year, setYear, loading, err, buckets }) {
         letterSpacing: 0.2,
         whiteSpace: "nowrap",
         color: "var(--gnfc-muted)",
-        border: "1px solid rgba(216,120,32,0.55)",
-        background: "rgba(216,120,32,0.14)",
+        border: "1px solid rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.55)",
+        background: "rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.14)",
       }
     }
     return {
@@ -458,8 +460,8 @@ function PastYearsCupBox({ years, year, setYear, loading, err, buckets }) {
       letterSpacing: 0.2,
       whiteSpace: "nowrap",
       color: "var(--gnfc-muted)",
-      border: "1px solid rgba(10,122,114,0.45)",
-      background: "rgba(10,122,114,0.10)",
+      border: "1px solid rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.45)",
+      background: "rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.1)",
     }
   }
 
@@ -600,7 +602,7 @@ function MatchupCardCup({ matchup, statKeys, matchupNo, open, onToggle }) {
     letterSpacing: 0.2,
     color: ink,
     border: `1px solid ${border}`,
-    background: "rgba(10, 122, 114, 0.06)",
+    background: "rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.06)",
     whiteSpace: "nowrap",
   }
 
@@ -1021,7 +1023,7 @@ export default function GnfcCupPage() {
           transition: color .15s ease;
         }
         .teamLinkHover:hover{
-          color: #db7d12 !important;
+          color: var(--gnfc-accent-orange, #db7d12) !important;
         }
 
         @media (max-width: 900px){
@@ -1034,7 +1036,8 @@ export default function GnfcCupPage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
         <div style={{ fontSize: 32, fontWeight: 950, letterSpacing: 0.2, color: ink }}>GNFC CUP</div>
 
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="gnfc-header-actions" style={{ display: "flex", gap: 8 }}>
+          <ThemeToggle />
           <button type="button" className="badge" onClick={() => nav(-1)}>
             Back
           </button>
@@ -1084,7 +1087,7 @@ export default function GnfcCupPage() {
                 border: `1px solid ${border}`,
                 borderRadius: 14,
                 padding: "10px 12px",
-                background: "rgba(219, 125, 18, 0.10)",
+                background: "rgba(var(--gnfc-orange-rgb, 219, 125, 18), 0.1)",
               }}
             >
               <div style={{ fontWeight: 950, color: ink }}>1st</div>
@@ -1099,7 +1102,7 @@ export default function GnfcCupPage() {
                 border: `1px solid ${border}`,
                 borderRadius: 14,
                 padding: "10px 12px",
-                background: "rgba(5, 97, 97, 0.08)",
+                background: "rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.08)",
               }}
             >
               <div style={{ fontWeight: 950, color: ink }}>2nd</div>

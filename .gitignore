@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local dark-mode installation backups
+gnfc-dark-mode-backups/

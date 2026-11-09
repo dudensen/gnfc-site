@@ -1,5 +1,7 @@
+// GNFC_DARK_MODE v1
 // src/pages/ChampionsRacePage.jsx
 import React, { useEffect, useMemo, useState } from "react"
+import ThemeToggle from "../theme/ThemeToggle"
 import { Link, useNavigate } from "react-router-dom"
 
 /* ----------------------------- config ----------------------------- */
@@ -429,13 +431,13 @@ function ScorePill({ value, tone }) {
   const tones = {
     team1: {
       color: "var(--gnfc-ink)",
-      border: "1px solid rgba(216,120,32,0.60)",
-      background: "rgba(216,120,32,0.14)",
+      border: "1px solid rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.6)",
+      background: "rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.14)",
     },
     team2: {
       color: "var(--gnfc-ink)",
-      border: "1px solid rgba(0,96,96,0.60)",
-      background: "rgba(0,96,96,0.14)",
+      border: "1px solid rgba(var(--gnfc-teal-rgb, 0, 96, 96), 0.6)",
+      background: "rgba(var(--gnfc-teal-rgb, 0, 96, 96), 0.14)",
     },
     tie: {
       color: "var(--gnfc-ink)",
@@ -491,9 +493,9 @@ function StatChip({ value, tone }) {
 
   const toneStyle =
     tone === "a"
-      ? { border: "1px solid rgba(216,120,32,0.40)", background: "rgba(216,120,32,0.10)" }
+      ? { border: "1px solid rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.4)", background: "rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.1)" }
       : tone === "b"
-      ? { border: "1px solid rgba(0,96,96,0.40)", background: "rgba(0,96,96,0.10)" }
+      ? { border: "1px solid rgba(var(--gnfc-teal-rgb, 0, 96, 96), 0.4)", background: "rgba(var(--gnfc-teal-rgb, 0, 96, 96), 0.1)" }
       : tone === "tie"
       ? { border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.03)" }
       : {}
@@ -527,7 +529,7 @@ function MatchupCardCupLike({ matchup, statKeys, matchupNo, open, onToggle }) {
     letterSpacing: 0.2,
     color: "var(--gnfc-ink)",
     border: "1px solid var(--gnfc-border)",
-    background: "rgba(10, 122, 114, 0.06)",
+    background: "rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.06)",
     whiteSpace: "nowrap",
   }
 
@@ -607,7 +609,7 @@ function MatchupCardCupLike({ matchup, statKeys, matchupNo, open, onToggle }) {
         <div
           style={{
             margin: "4px 0 4px",
-            color: "#db7d12",
+            color: "var(--gnfc-accent-orange, #db7d12)",
             fontWeight: 950,
             letterSpacing: 0.35,
             fontSize: 13,
@@ -699,13 +701,13 @@ function PodiumCard({ title, items }) {
         {first ? (
           <div
             style={{
-              border: "1px solid rgba(216,120,32,0.42)",
-              background: "rgba(216,120,32,0.10)",
+              border: "1px solid rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.42)",
+              background: "rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.1)",
               borderRadius: 16,
               padding: "14px 14px",
             }}
           >
-            <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: 0.6, color: "#db7d12", marginBottom: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: 0.6, color: "var(--gnfc-accent-orange, #db7d12)", marginBottom: 6 }}>
               1ST PLACE
             </div>
 
@@ -740,8 +742,8 @@ function PodiumCard({ title, items }) {
           {second ? (
             <div
               style={{
-                border: "1px solid rgba(0,96,96,0.35)",
-                background: "rgba(0,96,96,0.10)",
+                border: "1px solid rgba(var(--gnfc-teal-rgb, 0, 96, 96), 0.35)",
+                background: "rgba(var(--gnfc-teal-rgb, 0, 96, 96), 0.1)",
                 borderRadius: 14,
                 padding: "12px 14px",
               }}
@@ -955,7 +957,8 @@ export default function ChampionsRacePage() {
             <p>Category champion standings and playoff finals</p>
           </div>
 
-          <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+          <div className="gnfc-header-actions" style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+            <ThemeToggle />
             <button
               type="button"
               className="badge"
@@ -1244,7 +1247,7 @@ export default function ChampionsRacePage() {
           transition: color .15s ease;
         }
         .teamLinkHover:hover{
-          color: #db7d12 !important;
+          color: var(--gnfc-accent-orange, #db7d12) !important;
         }
       `}</style>
     </>

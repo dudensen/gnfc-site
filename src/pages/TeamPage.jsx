@@ -1,5 +1,7 @@
+// GNFC_DARK_MODE v1
 // src/pages/TeamPage.jsx
 import React, { useEffect, useMemo, useState } from "react"
+import ThemeToggle from "../theme/ThemeToggle"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useTeams } from "../hooks/useTeams"
 import { getDraftLeagueId } from "../config/fantraxDraftLeagues"
@@ -768,16 +770,16 @@ function FantraxTeamRoster({ leagueKey, teamName }) {
         .gnfcRoster { padding:16px; min-width:0; }
         .gnfcRosterErrorActions { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:8px; }
         .gnfcRosterControl { box-sizing:border-box; max-width:100%; min-width:0; min-height:32px; padding:6px 8px; border-radius:8px; border:1px solid var(--gnfc-border); background:var(--gnfc-surface); color:var(--gnfc-ink); font:inherit; font-size:12px; }
-        .gnfcRosterControl:focus-visible { outline:2px solid #db7d12; outline-offset:2px; }
+        .gnfcRosterControl:focus-visible { outline:2px solid var(--gnfc-accent-orange, #db7d12); outline-offset:2px; }
         button.gnfcRosterControl { cursor:pointer; font-weight:800; }
         .gnfcRosterMatch { display:flex; flex-direction:column; gap:4px; min-width:0; margin-top:10px; font-size:11px; font-weight:800; }
         .gnfcRosterList { display:grid; gap:10px; margin:0; padding:0; list-style:none; }
-        .gnfcRosterRow { display:grid; grid-template-columns:minmax(0,1fr) 48px 64px; align-items:center; gap:10px; border:1px solid rgba(5,97,97,.35); border-radius:14px; padding:12px; background:rgba(255,255,255,.96); box-shadow:0 4px 12px rgba(5,97,97,.05); }
+        .gnfcRosterRow { display:grid; grid-template-columns:minmax(0,1fr) 48px 64px; align-items:center; gap:10px; border:1px solid rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.35); border-radius:14px; padding:12px; background:var(--gnfc-fixed-surface, rgba(255,255,255,.96)); box-shadow:0 4px 12px rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.05); }
         .gnfcRosterName { min-width:0; overflow-wrap:anywhere; }
         .gnfcRosterPosition { min-width:0; font-size:12px; color:var(--gnfc-ink); overflow-wrap:anywhere; }
         .gnfcRosterPlayer { display:block; font-size:13px; font-weight:900; line-height:1.3; color:var(--gnfc-muted); }
         .gnfcRosterDetail { display:block; margin-top:2px; color:var(--gnfc-muted); font-size:10px; line-height:1.25; }
-        .gnfcRosterStatus { display:inline-block; justify-self:end; padding:3px 5px; border:1px solid rgba(5,97,97,.25); border-radius:999px; background:rgba(128,128,128,.12); color:var(--gnfc-ink); font-size:10px; font-weight:800; white-space:nowrap; }
+        .gnfcRosterStatus { display:inline-block; justify-self:end; padding:3px 5px; border:1px solid rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.25); border-radius:999px; background:rgba(128,128,128,.12); color:var(--gnfc-ink); font-size:10px; font-weight:800; white-space:nowrap; }
         .gnfcRosterStatus.isActive { border-color:rgba(0,160,120,.65); background:rgba(0,160,120,.18); color:#168044; }
         .gnfcRosterStatus.isIR { border-color:rgba(220,38,38,.7); background:rgba(220,38,38,.18); color:#dc4545; }
       `}</style>
@@ -1358,7 +1360,8 @@ function bestLeaguePlacementDisplay(entry, entries) {
             <p>{decodedName}</p>
           </div>
 
-          <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+          <div className="gnfc-header-actions" style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+            <ThemeToggle />
             {team?.division && (
               <Link
                 to={`/division/${encodeURIComponent(team.division)}`}
@@ -1659,11 +1662,11 @@ function bestLeaguePlacementDisplay(entry, entries) {
                       <div
                         key={key}
                         style={{
-                          border: "1px solid rgba(5, 97, 97, 0.35)",
+                          border: "1px solid rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.35)",
                           borderRadius: 14,
                           padding: 12,
-                          background: "rgba(255,255,255,0.96)",
-                          boxShadow: "0 4px 12px rgba(5, 97, 97, 0.05)",
+                          background: "var(--gnfc-fixed-surface, rgba(255,255,255,0.96))",
+                          boxShadow: "0 4px 12px rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.05)",
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
@@ -1704,11 +1707,11 @@ function bestLeaguePlacementDisplay(entry, entries) {
                     <div
                       key={label}
                       style={{
-                        border: "1px solid rgba(5, 97, 97, 0.35)",
+                        border: "1px solid rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.35)",
                         borderRadius: 14,
                         padding: 12,
-                        background: "rgba(255,255,255,0.96)",
-                        boxShadow: "0 4px 12px rgba(5, 97, 97, 0.05)",
+                        background: "var(--gnfc-fixed-surface, rgba(255,255,255,0.96))",
+                        boxShadow: "0 4px 12px rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.05)",
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
@@ -1734,11 +1737,11 @@ function bestLeaguePlacementDisplay(entry, entries) {
                       <div
                         key={label}
                         style={{
-                          border: "1px solid rgba(5, 97, 97, 0.35)",
+                          border: "1px solid rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.35)",
                           borderRadius: 14,
                           padding: 12,
-                          background: "rgba(255,255,255,0.96)",
-                          boxShadow: "0 4px 12px rgba(5, 97, 97, 0.05)",
+                          background: "var(--gnfc-fixed-surface, rgba(255,255,255,0.96))",
+                          boxShadow: "0 4px 12px rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.05)",
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
@@ -1806,11 +1809,11 @@ function bestLeaguePlacementDisplay(entry, entries) {
 function messageBoxStyle(marginTop = 12) {
   return {
     marginTop,
-    border: "1px solid rgba(5, 97, 97, 0.35)",
+    border: "1px solid rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.35)",
     borderRadius: 14,
     padding: 12,
-    background: "rgba(255,255,255,0.96)",
-    boxShadow: "0 4px 12px rgba(5, 97, 97, 0.05)",
+    background: "var(--gnfc-fixed-surface, rgba(255,255,255,0.96))",
+    boxShadow: "0 4px 12px rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.05)",
     color: "var(--gnfc-muted)",
     fontWeight: 700,
   }
@@ -1829,11 +1832,11 @@ const teamSelect = {
 }
 
 const miniBox = {
-  border: "1px solid rgba(5, 97, 97, 0.35)",
+  border: "1px solid rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.35)",
   borderRadius: 14,
   padding: 12,
-  background: "rgba(255,255,255,0.96)",
-  boxShadow: "0 4px 12px rgba(5, 97, 97, 0.05)",
+  background: "var(--gnfc-fixed-surface, rgba(255,255,255,0.96))",
+  boxShadow: "0 4px 12px rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.05)",
 }
 
 const miniLabel = {
@@ -1850,10 +1853,10 @@ const miniValue = {
 }
 
 const rspBox = {
-  border: "1px solid rgba(249,115,22,0.22)",
+  border: "1px solid rgba(var(--gnfc-orange-rgb, 249, 115, 22), 0.22)",
   borderRadius: 14,
   padding: 12,
-  background: "rgba(249,115,22,0.08)",
+  background: "rgba(var(--gnfc-orange-rgb, 249, 115, 22), 0.08)",
   textAlign: "center",
 }
 
@@ -1872,11 +1875,11 @@ const rspValue = {
 
 const awardsSingleBox = {
   marginTop: 12,
-  border: "2px solid rgba(249, 115, 22, 0.55)",
+  border: "2px solid rgba(var(--gnfc-orange-rgb, 249, 115, 22), 0.55)",
   borderRadius: 16,
   padding: 14,
-  background: "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,248,240,0.96))",
-  boxShadow: "0 10px 24px rgba(249, 115, 22, 0.10), inset 0 1px 0 rgba(255,255,255,0.85)",
+  background: "linear-gradient(180deg, var(--gnfc-fixed-surface, rgba(255,255,255,0.98)), rgba(255,248,240,0.96))",
+  boxShadow: "0 10px 24px rgba(var(--gnfc-orange-rgb, 249, 115, 22), 0.1), inset 0 1px 0 var(--gnfc-fixed-surface, rgba(255,255,255,0.85))",
 }
 
 const awardsIconsRow = {
@@ -1904,7 +1907,7 @@ const awardMiniTrophiesWrap = {
 
 const awardMiniLabel = {
   fontSize: 11,
-  color: "#7c2d12",
+  color: "var(--gnfc-fixed-award-ink, #7c2d12)",
   fontWeight: 900,
   lineHeight: 1.15,
 }
@@ -1917,8 +1920,8 @@ const awardTrophyLink = {
   width: 52,
   height: 52,
   borderRadius: 12,
-  background: "rgba(255,255,255,0.9)",
-  border: "1px solid rgba(249, 115, 22, 0.22)",
+  background: "var(--gnfc-fixed-surface, rgba(255,255,255,0.9))",
+  border: "1px solid rgba(var(--gnfc-orange-rgb, 249, 115, 22), 0.22)",
   boxShadow: "0 4px 10px rgba(0,0,0,0.06)",
 }
 
@@ -1927,9 +1930,9 @@ const teamHeaderLogo = {
   height: 52,
   objectFit: "contain",
   borderRadius: 12,
-  background: "rgba(255,255,255,0.92)",
-  border: "1px solid rgba(5, 97, 97, 0.18)",
-  boxShadow: "0 4px 10px rgba(5, 97, 97, 0.08)",
+  background: "var(--gnfc-fixed-surface, rgba(255,255,255,0.92))",
+  border: "1px solid rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.18)",
+  boxShadow: "0 4px 10px rgba(var(--gnfc-teal-rgb, 5, 97, 97), 0.08)",
   flexShrink: 0,
   padding: 4,
 }

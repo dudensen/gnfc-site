@@ -1,4 +1,6 @@
+// GNFC_DARK_MODE v1
 import React, { useEffect, useMemo, useState } from "react";
+import ThemeToggle from "../theme/ThemeToggle"
 import { fetchSheetGviz } from "../utils/fetchGviz";
 
 function toNum(x) {
@@ -141,6 +143,7 @@ export default function Divisions() {
             <h1>The Greek NBA Fantasy Championship</h1>
             <p>Divisions • Leagues • Teams</p>
           </div>
+          <div className="gnfc-header-actions"><ThemeToggle /></div>
         </div>
       </div>
 

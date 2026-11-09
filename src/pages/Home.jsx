@@ -1,5 +1,7 @@
+// GNFC_DARK_MODE v1
 // src/pages/Home.jsx
 import React, { useEffect, useMemo, useState } from "react"
+import ThemeToggle from "../theme/ThemeToggle"
 import { Link } from "react-router-dom"
 
 /* ----------------------------- config ----------------------------- */
@@ -8,8 +10,8 @@ const SHEET_ID = "1GGSJSL2aJ2UEXpHGU7NDOdN0CeOHeK0HzuxXOGqOUnA"
 const GROUPS_GID = "1712497869"
 const ALL_GID = "532207451"
 
-const ORANGE = "#f97316"
-const HASH_COLOR = "#0a7a72"
+const ORANGE = "var(--gnfc-accent-orange, #f97316)"
+const HASH_COLOR = "var(--gnfc-green-2, #0a7a72)"
 
 /* ----------------------------- tiny utils ----------------------------- */
 
@@ -582,7 +584,7 @@ function BigNavCard({ to, title, subtitle, centered = false }) {
           justifyContent: "center",
           alignItems: centered ? "center" : "flex-start",
           textAlign: centered ? "center" : "left",
-          borderColor: "rgba(216,120,32,0.45)",
+          borderColor: "rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.45)",
         }}
       >
         <div style={{ fontSize: 26, fontWeight: 900 }}>{title}</div>
@@ -609,8 +611,8 @@ function Tabs({ value, onChange }) {
     padding: "7px 12px",
     borderRadius: 999,
     border: `1px solid rgba(249,115,22,${active ? 0.75 : 0.45})`,
-    background: active ? "rgba(249,115,22,0.14)" : "rgba(249,115,22,0.06)",
-    color: "rgba(15,23,42,0.95)",
+    background: active ? "rgba(var(--gnfc-orange-rgb, 249, 115, 22), 0.14)" : "rgba(var(--gnfc-orange-rgb, 249, 115, 22), 0.06)",
+    color: "var(--gnfc-fixed-ink, rgba(15,23,42,0.95))",
     fontWeight: 900,
     letterSpacing: 0.3,
     cursor: "pointer",
@@ -820,9 +822,9 @@ function GeneralRankingsTable({ parsed, view, onViewChange }) {
   const selectStyle = {
     padding: "7px 12px",
     borderRadius: 999,
-    border: "1px solid rgba(249,115,22,0.55)",
-    background: "rgba(249,115,22,0.08)",
-    color: "rgba(15,23,42,0.95)",
+    border: "1px solid rgba(var(--gnfc-orange-rgb, 249, 115, 22), 0.55)",
+    background: "rgba(var(--gnfc-orange-rgb, 249, 115, 22), 0.08)",
+    color: "var(--gnfc-fixed-ink, rgba(15,23,42,0.95))",
     fontWeight: 900,
     letterSpacing: 0.3,
     outline: "none",
@@ -1101,6 +1103,7 @@ export default function Home() {
           <h1>The Greek NBA Fantasy Championship</h1>
           <p>Choose a division • Rankings</p>
         </div>
+        <div className="gnfc-header-actions"><ThemeToggle /></div>
       </div>
     </div>
 

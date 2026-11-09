@@ -1,5 +1,7 @@
+// GNFC_DARK_MODE v1
 // src/pages/LeaguePage.jsx
 import React, { useEffect, useMemo, useState } from "react"
+import ThemeToggle from "../theme/ThemeToggle"
 import { Link, useParams, useNavigate } from "react-router-dom"
 import { LEAGUE_GIDS } from "../config/leagueGids"
 import LeagueDraftResults from "../components/LeagueDraftResults"
@@ -431,13 +433,13 @@ function ScorePill({ label, value, tone }) {
 
   const tones = {
     win: {
-      border: "1px solid rgba(216,120,32,0.70)",
-      background: "rgba(216,120,32,0.18)",
+      border: "1px solid rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.7)",
+      background: "rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.18)",
       color: "var(--gnfc-ink)",
     },
     loss: {
-      border: "1px solid rgba(0,96,96,0.70)",
-      background: "rgba(0,96,96,0.18)",
+      border: "1px solid rgba(var(--gnfc-teal-rgb, 0, 96, 96), 0.7)",
+      background: "rgba(var(--gnfc-teal-rgb, 0, 96, 96), 0.18)",
       color: "var(--gnfc-ink)",
     },
     tie: {
@@ -481,9 +483,9 @@ function StatChip({ value, tone }) {
 
   const toneStyle =
     tone === "a"
-      ? { border: "1px solid rgba(216,120,32,0.40)", background: "rgba(216,120,32,0.10)" }
+      ? { border: "1px solid rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.4)", background: "rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.1)" }
       : tone === "b"
-      ? { border: "1px solid rgba(0,96,96,0.40)", background: "rgba(0,96,96,0.10)" }
+      ? { border: "1px solid rgba(var(--gnfc-teal-rgb, 0, 96, 96), 0.4)", background: "rgba(var(--gnfc-teal-rgb, 0, 96, 96), 0.1)" }
       : tone === "tie"
       ? { border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.03)" }
       : {}
@@ -515,7 +517,7 @@ function MatchupCard({ a, b, teamKey, statKeys, round }) {
             <Link to={teamHref(aName)} className="teamLinkHover" style={teamNameLink}>
               {aName}
             </Link>
-            <span style={{ color: "#db7d12", fontWeight: 700 }}>vs</span>
+            <span style={{ color: "var(--gnfc-accent-orange, #db7d12)", fontWeight: 700 }}>vs</span>
             <Link to={teamHref(bName)} className="teamLinkHover" style={teamNameLink}>
               {bName}
             </Link>
@@ -797,7 +799,8 @@ export default function LeaguePage() {
             <p>Live results • Select other league via the Dropdown Menu above</p>
           </div>
 
-          <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+          <div className="gnfc-header-actions" style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+            <ThemeToggle />
             <Link to="/" className="badge" style={{ textDecoration: "none" }}>
               ← Home
             </Link>
@@ -1016,7 +1019,7 @@ export default function LeaguePage() {
           transition: color .15s ease;
         }
         .teamLinkHover:hover{
-          color: #db7d12 !important;
+          color: var(--gnfc-accent-orange, #db7d12) !important;
         }
       `}</style>
     </>
@@ -1101,8 +1104,8 @@ const tabPillActive = {
   fontSize: 12,
   fontWeight: 900,
   letterSpacing: 0.2,
-  border: "1px solid rgba(216,120,32,0.55)",
-  background: "rgba(216,120,32,0.12)",
+  border: "1px solid rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.55)",
+  background: "rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.12)",
   color: "var(--gnfc-ink)",
 }
 
@@ -1127,8 +1130,8 @@ const roundPill = {
   fontWeight: 900,
   letterSpacing: 0.6,
   textTransform: "uppercase",
-  border: "1px solid rgba(10,122,114,0.55)",
-  background: "rgba(10,122,114,0.10)",
+  border: "1px solid rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.55)",
+  background: "rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.1)",
   color: "var(--gnfc-ink)",
 }
 

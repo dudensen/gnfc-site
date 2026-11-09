@@ -1,5 +1,7 @@
+// GNFC_DARK_MODE v1
 // src/pages/RivalriesPage.jsx
 import React, { useEffect, useMemo, useState } from "react"
+import ThemeToggle from "../theme/ThemeToggle"
 import { Link, useNavigate } from "react-router-dom"
 
 /* ============================== config ============================== */
@@ -129,7 +131,7 @@ const roundPill = {
   letterSpacing: 0.2,
   color: ink,
   border: `1px solid ${border}`,
-  background: "rgba(10, 122, 114, 0.06)",
+  background: "rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.06)",
   whiteSpace: "nowrap",
 }
 
@@ -150,7 +152,7 @@ const thStyle = {
   color: muted,
   borderBottom: `1px solid ${border}`,
   whiteSpace: "nowrap",
-  background: "rgba(10, 122, 114, 0.06)",
+  background: "rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.06)",
 }
 
 const tdStyle = {
@@ -163,7 +165,7 @@ const tdStyle = {
 
 function rowStyle(idx) {
   return {
-    background: idx % 2 ? "rgba(10, 122, 114, 0.035)" : "transparent",
+    background: idx % 2 ? "rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.035)" : "transparent",
   }
 }
 
@@ -253,8 +255,8 @@ function OrangePill({ value }) {
         fontWeight: 900,
         letterSpacing: 0.15,
         color: ink,
-        border: "1px solid rgba(219, 125, 18, 0.55)",
-        background: "rgba(219, 125, 18, 0.14)",
+        border: "1px solid rgba(var(--gnfc-orange-rgb, 219, 125, 18), 0.55)",
+        background: "rgba(var(--gnfc-orange-rgb, 219, 125, 18), 0.14)",
       }}
     >
       {cell(value)}
@@ -276,8 +278,8 @@ function ScorePill({ value }) {
         letterSpacing: 0.2,
         lineHeight: 1,
         color: ink,
-        border: "1px solid rgba(219, 125, 18, 0.55)",
-        background: "rgba(219, 125, 18, 0.14)",
+        border: "1px solid rgba(var(--gnfc-orange-rgb, 219, 125, 18), 0.55)",
+        background: "rgba(var(--gnfc-orange-rgb, 219, 125, 18), 0.14)",
       }}
     >
       {cell(value)}
@@ -305,10 +307,10 @@ function TeamRow({ team, league, highlight = false }) {
         minWidth: 0,
         flexWrap: "wrap",
         border: highlight
-          ? "1px solid rgba(219, 125, 18, 0.45)"
+          ? "1px solid rgba(var(--gnfc-orange-rgb, 219, 125, 18), 0.45)"
           : `1px solid ${border}`,
         background: highlight
-          ? "rgba(219, 125, 18, 0.05)"
+          ? "rgba(var(--gnfc-orange-rgb, 219, 125, 18), 0.05)"
           : "transparent",
         borderRadius: 12,
         padding: "6px 8px",
@@ -396,7 +398,7 @@ function MatchupCardRivalry({ matchup, statKeys, matchupNo, open, onToggle }) {
     letterSpacing: 0.2,
     color: ink,
     border: `1px solid ${border}`,
-    background: "rgba(10, 122, 114, 0.06)",
+    background: "rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.06)",
     whiteSpace: "nowrap",
   }
 
@@ -789,7 +791,8 @@ export default function RivalriesPage() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="gnfc-header-actions" style={{ display: "flex", gap: 8 }}>
+          <ThemeToggle />
           <button type="button" className="badge" onClick={() => nav(-1)}>
             Back
           </button>

@@ -1,4 +1,6 @@
+// GNFC_DARK_MODE v1
 import React, { useEffect, useMemo, useState } from "react"
+import ThemeToggle from "../theme/ThemeToggle"
 import { Link, useNavigate } from "react-router-dom"
 import mammoth from "mammoth/mammoth.browser"
 import DOMPurify from "dompurify"
@@ -250,7 +252,8 @@ export default function ConstitutionPage() {
             <p>{CONSTITUTION_SUBTITLE}</p>
           </div>
 
-          <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+          <div className="gnfc-header-actions" style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+            <ThemeToggle />
             <button
               type="button"
               className="badge"
@@ -273,9 +276,9 @@ export default function ConstitutionPage() {
           style={{
             padding: 18,
             marginBottom: 14,
-            borderColor: "rgba(216,120,32,0.35)",
+            borderColor: "rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.35)",
             background:
-              "linear-gradient(180deg, rgba(216,120,32,0.10), rgba(10,122,114,0.12))",
+              "linear-gradient(180deg, rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.1), rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.12))",
           }}
         >
           <div
@@ -293,7 +296,7 @@ export default function ConstitutionPage() {
                   fontSize: 12,
                   fontWeight: 950,
                   letterSpacing: 0.7,
-                  color: "#db7d12",
+                  color: "var(--gnfc-accent-orange, #db7d12)",
                   textTransform: "uppercase",
                   marginBottom: 8,
                 }}
@@ -346,7 +349,7 @@ export default function ConstitutionPage() {
                 fontSize: 12,
                 fontWeight: 950,
                 letterSpacing: 0.6,
-                color: "#db7d12",
+                color: "var(--gnfc-accent-orange, #db7d12)",
                 textTransform: "uppercase",
                 marginBottom: 10,
               }}
@@ -372,11 +375,11 @@ export default function ConstitutionPage() {
                       borderRadius: 12,
                       border:
                         activeId === item.id
-                          ? "1px solid rgba(216,120,32,0.45)"
+                          ? "1px solid rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.45)"
                           : "1px solid rgba(255,255,255,0.08)",
                       background:
                         activeId === item.id
-                          ? "rgba(216,120,32,0.12)"
+                          ? "rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.12)"
                           : "rgba(255,255,255,0.03)",
                       fontWeight: item.level === "h1" ? 900 : 700,
                       fontSize: item.level === "h1" ? 13 : 12,
@@ -452,7 +455,7 @@ export default function ConstitutionPage() {
           font-weight: 1000;
           margin: 0 0 16px;
           padding-bottom: 10px;
-          border-bottom: 1px solid rgba(216,120,32,0.28);
+          border-bottom: 1px solid rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.28);
           color: #ffffff;
           scroll-margin-top: 92px;
         }
@@ -462,7 +465,7 @@ export default function ConstitutionPage() {
           line-height: 1.15;
           font-weight: 950;
           margin: 26px 0 12px;
-          color: #db7d12;
+          color: var(--gnfc-accent-orange, #db7d12);
           scroll-margin-top: 92px;
         }
 
@@ -516,13 +519,13 @@ export default function ConstitutionPage() {
         }
 
         .constitutionDoc th{
-          color: #db7d12;
+          color: var(--gnfc-accent-orange, #db7d12);
           font-weight: 900;
-          background: rgba(10,122,114,0.16);
+          background: rgba(var(--gnfc-teal-rgb, 10, 122, 114), 0.16);
         }
 
         .constitutionDoc a{
-          color: #db7d12;
+          color: var(--gnfc-accent-orange, #db7d12);
         }
 
         .constitutionDoc strong{
@@ -532,8 +535,8 @@ export default function ConstitutionPage() {
         .constitutionDoc blockquote{
           margin: 16px 0;
           padding: 12px 14px;
-          border-left: 3px solid rgba(216,120,32,0.45);
-          background: rgba(216,120,32,0.08);
+          border-left: 3px solid rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.45);
+          background: rgba(var(--gnfc-orange-rgb, 216, 120, 32), 0.08);
           border-radius: 10px;
         }
       `}</style>

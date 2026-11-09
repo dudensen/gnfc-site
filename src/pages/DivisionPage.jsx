@@ -1,5 +1,7 @@
+// GNFC_DARK_MODE v1
 // src/pages/DivisionPage.jsx
 import React, { useEffect, useMemo, useState } from "react"
+import ThemeToggle from "../theme/ThemeToggle"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useTeams } from "../hooks/useTeams"
 import { getFantraxLeagueNames, normalizeLeagueKey } from "../utils/fantraxLeagues"
@@ -192,7 +194,7 @@ function rankPill(v) {
     borderRadius: 999,
     fontSize: 12,
     fontWeight: 900,
-    color: "#000",
+    color: "var(--gnfc-fixed-ink, #000)",
     background: "rgba(203,213,225,0.90)",
     border: "1px solid rgba(0,0,0,0.22)",
     boxShadow: "0 1px 0 rgba(0,0,0,0.10)",
@@ -213,8 +215,8 @@ function TogglePill({ active, children, onClick }) {
         height: 30,
         padding: "0 12px",
         borderRadius: 999,
-        border: active ? "1px solid rgba(249,115,22,0.55)" : "1px solid rgba(255,255,255,0.14)",
-        background: active ? "rgba(249,115,22,0.18)" : "rgba(255,255,255,0.06)",
+        border: active ? "1px solid rgba(var(--gnfc-orange-rgb, 249, 115, 22), 0.55)" : "1px solid rgba(255,255,255,0.14)",
+        background: active ? "rgba(var(--gnfc-orange-rgb, 249, 115, 22), 0.18)" : "rgba(255,255,255,0.06)",
         color: "var(--gnfc-text)",
         fontWeight: 900,
         fontSize: 12,
@@ -427,7 +429,8 @@ export default function DivisionPage() {
             <p>{leagues.totalTeams} teams • sorted by league rank</p>
           </div>
 
-          <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+          <div className="gnfc-header-actions" style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+            <ThemeToggle />
             <Link to="/" className="badge" style={{ textDecoration: "none" }}>
               ← Divisions
             </Link>

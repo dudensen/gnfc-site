@@ -1,0 +1,114 @@
+:root {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --gnfc-bg: #0b1417;
+  --gnfc-surface: #122125;
+  --gnfc-surface-2: #1a2e33;
+  --gnfc-border: #315158;
+  --gnfc-ink: #edf6f5;
+  --gnfc-text: #edf6f5;
+  --gnfc-muted: #afc6c8;
+  --gnfc-green: #74d8cd;
+  --gnfc-green-2: #74d8cd;
+  --gnfc-orange: #ffb45d;
+  --gnfc-shadow: 0 10px 25px rgba(0, 0, 0, 0.22);
+  --gnfc-shadow-hover: 0 14px 34px rgba(0, 0, 0, 0.32);
+
+  /* The page patches retain each original light color as a CSS fallback. */
+  --gnfc-fixed-bg: var(--gnfc-bg);
+  --gnfc-fixed-surface: var(--gnfc-surface);
+  --gnfc-fixed-surface-2: var(--gnfc-surface-2);
+  --gnfc-fixed-ink: var(--gnfc-text);
+  --gnfc-fixed-muted: var(--gnfc-muted);
+  --gnfc-fixed-border: var(--gnfc-border);
+  --gnfc-fixed-award-ink: #ffcb91;
+  --gnfc-fixed-danger: #ffaaaa;
+  --gnfc-accent-orange: var(--gnfc-orange);
+  --gnfc-teal-rgb: 116, 216, 205;
+  --gnfc-orange-rgb: 255, 180, 93;
+}
+
+:root[data-theme="dark"] .topbar {
+  background: rgba(11, 20, 23, 0.90);
+}
+
+/* Dropdown menus are separate native surfaces from the select itself. */
+:root[data-theme="dark"] :where(option, optgroup) {
+  background: var(--gnfc-surface);
+  color: var(--gnfc-text);
+}
+
+:root[data-theme="dark"] :where(button, input, select, textarea) {
+  color: var(--gnfc-text);
+}
+
+/* These document panels already have intentionally dark backgrounds. */
+.constitutionSidebar,
+.constitutionMainCard {
+  --gnfc-ink: #edf6f5;
+  --gnfc-muted: #b9d3d1;
+}
+
+.gnfc-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.gnfc-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 7px;
+  min-height: 36px;
+  min-width: 82px;
+  padding: 7px 11px;
+  border: 1px solid var(--gnfc-border);
+  border-radius: 999px;
+  background: var(--gnfc-surface);
+  color: var(--gnfc-ink);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.gnfc-theme-toggle:hover {
+  border-color: var(--gnfc-orange);
+  color: var(--gnfc-orange);
+}
+
+.gnfc-theme-toggle:focus-visible {
+  outline: 2px solid var(--gnfc-orange);
+  outline-offset: 3px;
+}
+
+.gnfc-theme-toggle svg {
+  flex-shrink: 0;
+}
+
+@media (max-width: 700px) {
+  .topbar .brand,
+  .histHeader .brandRow {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .topbar .brand-title {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .topbar .gnfc-header-actions,
+  .histHeader .brandRight {
+    flex-wrap: wrap;
+  }
+}
